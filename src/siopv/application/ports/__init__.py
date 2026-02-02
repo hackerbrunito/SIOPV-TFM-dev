@@ -10,6 +10,11 @@ from siopv.application.ports.enrichment_clients import (
     NVDClientPort,
     OSINTSearchClientPort,
 )
+from siopv.application.ports.ml_classifier import (
+    DatasetLoaderPort,
+    MLClassifierPort,
+    ModelTrainerPort,
+)
 from siopv.application.ports.vector_store import VectorStorePort
 
 __all__ = [
@@ -20,4 +25,8 @@ __all__ = [
     "OSINTSearchClientPort",
     # Vector store
     "VectorStorePort",
+    # ML Classification
+    "DatasetLoaderPort",
+    "MLClassifierPort",
+    "ModelTrainerPort",
 ]

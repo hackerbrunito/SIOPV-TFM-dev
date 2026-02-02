@@ -1,5 +1,12 @@
 """Application use cases for SIOPV."""
 
+from siopv.application.use_cases.classify_risk import (
+    BatchClassificationResult,
+    ClassificationResult,
+    ClassificationStats,
+    ClassifyRiskUseCase,
+    create_classify_risk_use_case,
+)
 from siopv.application.use_cases.enrich_context import (
     BatchEnrichmentResult,
     EnrichContextUseCase,
@@ -28,4 +35,10 @@ __all__ = [
     "EnrichmentResult",
     "EnrichmentStatsPhase2",
     "create_enrich_context_use_case",
+    # Phase 3 - Classification
+    "BatchClassificationResult",
+    "ClassificationResult",
+    "ClassificationStats",
+    "ClassifyRiskUseCase",
+    "create_classify_risk_use_case",
 ]

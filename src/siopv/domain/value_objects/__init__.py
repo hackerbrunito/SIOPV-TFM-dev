@@ -102,6 +102,11 @@ from siopv.domain.value_objects.enrichment import (
     NVDEnrichment,
     OSINTResult,
 )
+from siopv.domain.value_objects.risk_score import (
+    LIMEExplanation,
+    RiskScore,
+    SHAPValues,
+)
 
 __all__ = [
     # Phase 1 - Ingestion
@@ -117,4 +122,8 @@ __all__ = [
     "GitHubAdvisory",
     "NVDEnrichment",
     "OSINTResult",
+    # Phase 3 - ML Classification
+    "LIMEExplanation",
+    "RiskScore",
+    "SHAPValues",
 ]

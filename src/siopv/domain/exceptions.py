@@ -163,3 +163,22 @@ class JiraIntegrationError(OutputError):
 
 class ReportGenerationError(OutputError):
     """Failed to generate PDF report."""
+
+
+# === Security Errors ===
+
+
+class SecurityError(SIOPVError):
+    """Base error for security-related issues."""
+
+
+class PathTraversalError(SecurityError):
+    """Attempted path traversal detected."""
+
+
+class IntegrityError(SecurityError):
+    """Model or data integrity verification failed."""
+
+
+class SchemaValidationError(SecurityError):
+    """External data schema validation failed."""

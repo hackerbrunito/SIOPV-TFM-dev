@@ -130,4 +130,12 @@ class VulnerabilityRecord(BaseModel):
         return self
 
 
-__all__ = ["VulnerabilityRecord"]
+# Phase 3 - ML Classification
+from siopv.domain.entities.ml_feature_vector import MLFeatureVector
+
+__all__ = [
+    # Phase 1 - Ingestion
+    "VulnerabilityRecord",
+    # Phase 3 - ML Classification
+    "MLFeatureVector",
+]

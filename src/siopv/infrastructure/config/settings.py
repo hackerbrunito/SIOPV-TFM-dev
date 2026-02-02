@@ -67,6 +67,9 @@ class Settings(BaseSettings):
 
     # === ML Model ===
     model_path: Path = Path("./models/xgboost_risk_model.json")
+    model_base_path: Path = Path("./models")
+    model_max_size_bytes: int = 104857600  # 100MB
+    model_signing_key: SecretStr | None = None  # HMAC key for model integrity
     uncertainty_threshold: float = 0.3
 
     # === Circuit Breaker ===
