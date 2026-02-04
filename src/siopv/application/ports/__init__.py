@@ -4,6 +4,11 @@ Ports define contracts that adapters must implement.
 Following hexagonal architecture (Ports & Adapters pattern).
 """
 
+from siopv.application.ports.authorization import (
+    AuthorizationModelPort,
+    AuthorizationPort,
+    AuthorizationStorePort,
+)
 from siopv.application.ports.enrichment_clients import (
     EPSSClientPort,
     GitHubAdvisoryClientPort,
@@ -18,6 +23,10 @@ from siopv.application.ports.ml_classifier import (
 from siopv.application.ports.vector_store import VectorStorePort
 
 __all__ = [
+    # Authorization (OpenFGA)
+    "AuthorizationModelPort",
+    "AuthorizationPort",
+    "AuthorizationStorePort",
     # Enrichment API clients
     "EPSSClientPort",
     "GitHubAdvisoryClientPort",
