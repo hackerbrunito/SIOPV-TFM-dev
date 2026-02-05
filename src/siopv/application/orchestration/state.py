@@ -9,6 +9,7 @@ Based on specification section 3.4.
 from __future__ import annotations
 
 import operator
+import uuid
 from dataclasses import dataclass, field
 from typing import Annotated, TypedDict
 
@@ -24,6 +25,11 @@ class PipelineState(TypedDict, total=False):
     Fields marked with Annotated[..., operator.add] are append-only.
 
     Attributes:
+        user_id: User identifier for authorization (Phase 5)
+        project_id: Project identifier for authorization context (Phase 5)
+        authorization_allowed: Whether user is authorized to proceed (Phase 5)
+        authorization_skipped: Whether authorization was skipped (Phase 5)
+        authorization_result: Detailed authorization result (Phase 5)
         vulnerabilities: List of parsed VulnerabilityRecord from Phase 1
         enrichments: Dict mapping CVE ID to EnrichmentData from Phase 2
         classifications: Dict mapping CVE ID to ClassificationResult from Phase 3
@@ -35,6 +41,14 @@ class PipelineState(TypedDict, total=False):
         thread_id: Unique identifier for this pipeline execution
         current_node: Name of the currently executing node
     """
+
+    # Phase 5 - Authorization (executed first as gatekeeper)
+    user_id: str | None
+    project_id: str | None
+    system_execution: bool  # Explicit flag to allow anonymous/system access
+    authorization_allowed: bool
+    authorization_skipped: bool
+    authorization_result: dict[str, object] | None
 
     # Phase 1 - Ingestion
     vulnerabilities: list[VulnerabilityRecord]
@@ -136,27 +150,44 @@ def create_initial_state(
     *,
     report_path: str | None = None,
     thread_id: str | None = None,
+    user_id: str | None = None,
+    project_id: str | None = None,
+    system_execution: bool = False,
 ) -> PipelineState:
     """Create initial pipeline state with default values.
 
     Args:
         report_path: Optional path to Trivy report file
         thread_id: Optional thread ID for checkpointing
+        user_id: Optional user ID for authorization (Phase 5)
+        project_id: Optional project ID for authorization context (Phase 5)
+        system_execution: If True, allows anonymous execution without user_id
 
     Returns:
         PipelineState with initialized fields
     """
-    import uuid
 
     return PipelineState(
+        # Phase 5 - Authorization
+        user_id=user_id,
+        project_id=project_id,
+        system_execution=system_execution,
+        authorization_allowed=False,
+        authorization_skipped=False,
+        authorization_result=None,
+        # Phase 1 - Ingestion
         vulnerabilities=[],
         report_path=report_path,
+        # Phase 2 - Enrichment
         enrichments={},
+        # Phase 3 - Classification
         classifications={},
+        # Phase 4 - Orchestration
         escalated_cves=[],
         llm_confidence={},
         processed_count=0,
         errors=[],
+        # Metadata
         thread_id=thread_id or str(uuid.uuid4()),
         current_node="start",
     )

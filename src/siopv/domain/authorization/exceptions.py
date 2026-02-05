@@ -114,7 +114,8 @@ class InvalidUserFormatError(AuthorizationError):
         self.user_string = user_string
         self.reason = reason
 
-        message = f"Invalid user format: '{user_string}'"
+        # Security: Generic message to avoid disclosing user input
+        message = "Invalid user format"
         if reason:
             message += f". {reason}"
 

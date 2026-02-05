@@ -112,8 +112,8 @@ class UserId(BaseModel):
     def validate_user_id(cls, v: str) -> str:
         """Validate user ID format."""
         if not _USER_ID_PATTERN.match(v):
-            # Security: Do not include user input in error message to prevent information disclosure
-            msg = "Invalid user ID format. Only alphanumeric, _, -, @, . allowed"
+            # Security: Generic message to avoid disclosing validation rules
+            msg = "Invalid user ID format"
             raise ValueError(msg)
         return v
 
@@ -178,8 +178,8 @@ class ResourceId(BaseModel):
     def validate_identifier(cls, v: str) -> str:
         """Validate resource identifier format."""
         if not _RESOURCE_ID_PATTERN.match(v):
-            # Security: Do not include user input in error message to prevent information disclosure
-            msg = "Invalid resource identifier format. Only alphanumeric, _, -, : allowed"
+            # Security: Generic message to avoid disclosing validation rules
+            msg = "Invalid resource identifier format"
             raise ValueError(msg)
         return v
 

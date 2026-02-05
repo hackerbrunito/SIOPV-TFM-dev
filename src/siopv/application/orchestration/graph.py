@@ -6,6 +6,7 @@ Based on specification section 3.4.
 
 from __future__ import annotations
 
+import sqlite3
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -29,6 +30,7 @@ if TYPE_CHECKING:
     from langgraph.graph.state import CompiledStateGraph
 
     from siopv.application.ports import (
+        AuthorizationPort,
         EPSSClientPort,
         GitHubAdvisoryClientPort,
         NVDClientPort,
@@ -83,20 +85,24 @@ class PipelineGraphBuilder:
     """Builder for the SIOPV LangGraph pipeline.
 
     Constructs a StateGraph with the following nodes:
+    - authorize: Authorization gatekeeper (Phase 5 - Zero Trust)
     - ingest: Parse Trivy report (Phase 1)
     - enrich: Context enrichment with CRAG (Phase 2)
     - classify: ML risk classification (Phase 3)
     - escalate: Human review escalation (Phase 4)
 
-    Conditional routing is based on the Uncertainty Trigger:
-    - If ML/LLM discrepancy is high or confidence is low -> escalate
-    - Otherwise -> continue to end
+    Flow: START -> authorize -> (if allowed) -> ingest -> enrich -> classify -> ...
+
+    Conditional routing is based on:
+    - Authorization check (Phase 5): If denied -> end with 403
+    - Uncertainty Trigger (Phase 4): If ML/LLM discrepancy high -> escalate
     """
 
     def __init__(
         self,
         *,
         checkpoint_db_path: str | Path | None = None,
+        authorization_port: AuthorizationPort | None = None,
         nvd_client: NVDClientPort | None = None,
         epss_client: EPSSClientPort | None = None,
         github_client: GitHubAdvisoryClientPort | None = None,
@@ -108,6 +114,7 @@ class PipelineGraphBuilder:
 
         Args:
             checkpoint_db_path: Path to SQLite checkpoint database
+            authorization_port: Authorization port for Phase 5 gatekeeper
             nvd_client: NVD API client for enrichment
             epss_client: EPSS API client for enrichment
             github_client: GitHub Advisory client for enrichment
@@ -116,6 +123,7 @@ class PipelineGraphBuilder:
             classifier: ML classifier for risk classification
         """
         self._checkpoint_db_path = checkpoint_db_path or DEFAULT_CHECKPOINT_DB
+        self._authorization_port = authorization_port
         self._nvd_client = nvd_client
         self._epss_client = epss_client
         self._github_client = github_client
@@ -148,9 +156,20 @@ class PipelineGraphBuilder:
 
     def _add_nodes(self) -> None:
         """Add all pipeline nodes to the graph."""
+        from siopv.application.orchestration.nodes import authorization_node
+
         if self._graph is None:
             msg = "Graph not initialized. Call build() first."
             raise RuntimeError(msg)
+
+        # Authorize node - Phase 5 gatekeeper (Zero Trust)
+        self._graph.add_node(
+            "authorize",
+            lambda state: authorization_node(
+                state,
+                authorization_port=self._authorization_port,
+            ),
+        )
 
         # Ingest node - wraps Phase 1 use case
         self._graph.add_node("ingest", ingest_node)
@@ -177,16 +196,33 @@ class PipelineGraphBuilder:
         # Escalate node - handles uncertainty escalation
         self._graph.add_node("escalate", escalate_node)
 
-        logger.debug("pipeline_nodes_added", nodes=["ingest", "enrich", "classify", "escalate"])
+        logger.debug(
+            "pipeline_nodes_added",
+            nodes=["authorize", "ingest", "enrich", "classify", "escalate"],
+        )
 
     def _add_edges(self) -> None:
         """Add all edges and conditional routing to the graph."""
+        from siopv.application.orchestration.nodes import route_after_authorization
+
         if self._graph is None:
             msg = "Graph not initialized. Call build() first."
             raise RuntimeError(msg)
 
-        # Linear flow: START -> ingest -> enrich -> classify
-        self._graph.add_edge(START, "ingest")
+        # Flow: START -> authorize -> (conditional) -> ingest -> enrich -> classify
+        self._graph.add_edge(START, "authorize")
+
+        # Conditional routing after authorization (Phase 5 gatekeeper)
+        self._graph.add_conditional_edges(
+            "authorize",
+            route_after_authorization,
+            {
+                "ingest": "ingest",
+                "end": END,
+            },
+        )
+
+        # Linear flow after authorization: ingest -> enrich -> classify
         self._graph.add_edge("ingest", "enrich")
         self._graph.add_edge("enrich", "classify")
 
@@ -212,6 +248,24 @@ class PipelineGraphBuilder:
 
         logger.debug("pipeline_edges_added")
 
+    def _create_checkpointer(self) -> SqliteSaver:
+        """Create and initialize SQLite checkpointer.
+
+        Returns:
+            SqliteSaver instance for LangGraph checkpointing
+
+        Raises:
+            ValueError: If checkpoint database path validation fails
+        """
+
+        db_path = _validate_path(
+            Path(self._checkpoint_db_path),
+            allowed_extensions=ALLOWED_DB_EXTENSIONS,
+        )
+        conn = sqlite3.connect(str(db_path), check_same_thread=False)
+        logger.info("checkpointer_initialized", db_path=str(db_path))
+        return SqliteSaver(conn)
+
     def compile(self, *, with_checkpointer: bool = True) -> CompiledStateGraph[PipelineState]:
         """Compile the graph with optional checkpointing.
 
@@ -228,23 +282,7 @@ class PipelineGraphBuilder:
             msg = "Failed to build graph"
             raise RuntimeError(msg)
 
-        checkpointer = None
-        if with_checkpointer:
-            import sqlite3
-
-            # Validate checkpoint database path
-            db_path = _validate_path(
-                Path(self._checkpoint_db_path),
-                allowed_extensions=ALLOWED_DB_EXTENSIONS,
-            )
-
-            conn = sqlite3.connect(str(db_path), check_same_thread=False)
-            checkpointer = SqliteSaver(conn)
-            logger.info(
-                "checkpointer_initialized",
-                db_path=str(db_path),
-            )
-
+        checkpointer = self._create_checkpointer() if with_checkpointer else None
         self._compiled = self._graph.compile(checkpointer=checkpointer)  # type: ignore[assignment]
 
         logger.info(
@@ -303,6 +341,7 @@ class PipelineGraphBuilder:
 def create_pipeline_graph(
     *,
     checkpoint_db_path: str | Path | None = None,
+    authorization_port: AuthorizationPort | None = None,
     nvd_client: NVDClientPort | None = None,
     epss_client: EPSSClientPort | None = None,
     github_client: GitHubAdvisoryClientPort | None = None,
@@ -315,6 +354,7 @@ def create_pipeline_graph(
 
     Args:
         checkpoint_db_path: Path to SQLite checkpoint database
+        authorization_port: Authorization port for Phase 5 gatekeeper
         nvd_client: NVD API client for enrichment
         epss_client: EPSS API client for enrichment
         github_client: GitHub Advisory client for enrichment
@@ -328,6 +368,7 @@ def create_pipeline_graph(
     """
     builder = PipelineGraphBuilder(
         checkpoint_db_path=checkpoint_db_path,
+        authorization_port=authorization_port,
         nvd_client=nvd_client,
         epss_client=epss_client,
         github_client=github_client,
@@ -343,7 +384,10 @@ def run_pipeline(
     report_path: str | Path,
     *,
     thread_id: str | None = None,
+    user_id: str | None = None,
+    project_id: str | None = None,
     checkpoint_db_path: str | Path | None = None,
+    authorization_port: AuthorizationPort | None = None,
     classifier: MLClassifierPort | None = None,
 ) -> PipelineState:
     """Convenience function to run the full pipeline on a Trivy report.
@@ -351,7 +395,10 @@ def run_pipeline(
     Args:
         report_path: Path to Trivy JSON report
         thread_id: Optional thread ID for checkpointing
+        user_id: Optional user ID for authorization (Phase 5)
+        project_id: Optional project ID for authorization context (Phase 5)
         checkpoint_db_path: Path to checkpoint database
+        authorization_port: Optional authorization port for Phase 5 gatekeeper
         classifier: Optional ML classifier
 
     Returns:
@@ -363,11 +410,14 @@ def run_pipeline(
     initial_state = create_initial_state(
         report_path=str(report_path),
         thread_id=thread_id or str(uuid.uuid4()),
+        user_id=user_id,
+        project_id=project_id,
     )
 
     # Create and compile graph
     graph = create_pipeline_graph(
         checkpoint_db_path=checkpoint_db_path,
+        authorization_port=authorization_port,
         classifier=classifier,
         with_checkpointer=checkpoint_db_path is not None,
     )
@@ -379,6 +429,8 @@ def run_pipeline(
         "pipeline_execution_started",
         report_path=str(report_path),
         thread_id=initial_state["thread_id"],
+        user_id=user_id,
+        project_id=project_id,
     )
 
     # Execute pipeline
@@ -387,6 +439,7 @@ def run_pipeline(
     logger.info(
         "pipeline_execution_complete",
         thread_id=initial_state["thread_id"],
+        authorization_allowed=result.get("authorization_allowed"),
         vulnerability_count=len(result.get("vulnerabilities", [])),
         classification_count=len(result.get("classifications", {})),
         escalated_count=len(result.get("escalated_cves", [])),
