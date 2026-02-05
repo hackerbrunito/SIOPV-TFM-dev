@@ -886,8 +886,10 @@ class TestErrorScenariosAndEdgeCases:
         mock_settings.openfga_store_id = None
         adapter = OpenFGAAdapter(mock_settings)
 
-        # Act & Assert
-        with pytest.raises(ValueError, match=r"store.*id"):
+        # Act & Assert - Adapter raises domain exception for missing config
+        from siopv.domain.authorization import StoreNotFoundError
+
+        with pytest.raises(StoreNotFoundError):
             await adapter.initialize()
 
     @pytest.mark.asyncio
