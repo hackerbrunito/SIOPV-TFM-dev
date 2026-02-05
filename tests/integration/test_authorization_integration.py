@@ -139,8 +139,14 @@ class TestEndToEndPermissionCheckFlow:
         # Assert
         assert result.allowed is True
         assert result.decision_id is not None
-        # ACTION.VIEW maps to {VIEWER, ANALYST, AUDITOR}, first one in frozenset is returned
-        assert result.checked_relation in {Relation.VIEWER, Relation.ANALYST, Relation.AUDITOR}
+        # ACTION.VIEW maps to {VIEWER, ANALYST, AUDITOR, OWNER, ADMIN}
+        assert result.checked_relation in {
+            Relation.VIEWER,
+            Relation.ANALYST,
+            Relation.AUDITOR,
+            Relation.OWNER,
+            Relation.ADMIN,
+        }
         assert result.check_duration_ms >= 0
         mock_openfga_client.check.assert_called_once()
 
@@ -432,7 +438,6 @@ class TestRelationshipManagementFlow:
         self,
         adapter: OpenFGAAdapter,
         mock_openfga_client: AsyncMock,
-        sample_user: UserId,
         sample_resource: ResourceId,
     ) -> None:
         """Test reading relationship tuples with filters.
@@ -827,7 +832,7 @@ class TestDependencyInjectionIntegration:
             mock_client_class.return_value = mock_client_instance
 
             auth_port = get_authorization_port(mock_settings)
-            store_port = get_authorization_store_port(mock_settings)
+            _store_port = get_authorization_store_port(mock_settings)
 
             # Setup mock check response
             mock_response = MagicMock()
@@ -882,7 +887,7 @@ class TestErrorScenariosAndEdgeCases:
         adapter = OpenFGAAdapter(mock_settings)
 
         # Act & Assert
-        with pytest.raises(Exception):
+        with pytest.raises(ValueError, match=r"store.*id"):
             await adapter.initialize()
 
     @pytest.mark.asyncio

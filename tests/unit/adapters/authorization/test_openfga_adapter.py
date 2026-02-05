@@ -46,8 +46,7 @@ def mock_settings() -> MagicMock:
 @pytest.fixture
 def mock_openfga_client() -> AsyncMock:
     """Create mock OpenFGA client."""
-    client = AsyncMock()
-    return client
+    return AsyncMock()
 
 
 @pytest.fixture
@@ -56,8 +55,7 @@ def adapter_with_mock_client(
     mock_openfga_client: AsyncMock,
 ) -> OpenFGAAdapter:
     """Create adapter with injected mock client."""
-    adapter = OpenFGAAdapter(mock_settings, client=mock_openfga_client)
-    return adapter
+    return OpenFGAAdapter(mock_settings, client=mock_openfga_client)
 
 
 @pytest.fixture
@@ -83,7 +81,7 @@ def sample_context(sample_user: UserId, sample_resource: ResourceId) -> Authoriz
 
 
 @pytest.fixture
-def sample_tuple(sample_user: UserId, sample_resource: ResourceId) -> RelationshipTuple:
+def sample_tuple(sample_user: UserId) -> RelationshipTuple:
     """Create sample relationship tuple."""
     return RelationshipTuple.create(
         user_id=sample_user.value,
@@ -563,7 +561,6 @@ class TestAuthorizationPortBatchCheck:
     async def test_batch_check_circuit_breaker_error(
         self,
         adapter_with_mock_client: OpenFGAAdapter,
-        mock_openfga_client: AsyncMock,
         sample_resource: ResourceId,
     ) -> None:
         """Test batch_check handles CircuitBreakerError."""
@@ -738,7 +735,7 @@ class TestAuthorizationPortListUserRelations:
         """Test list_user_relations finds multiple relations."""
 
         # Make check return True for VIEWER and ANALYST, False for others
-        async def mock_check(request: Any, options: Any = None) -> MagicMock:
+        async def mock_check(request: Any, _options: Any = None) -> MagicMock:
             response = MagicMock()
             response.allowed = request.relation in ("viewer", "analyst")
             return response
@@ -784,7 +781,7 @@ class TestAuthorizationPortListUserRelations:
         """Test list_user_relations skips relations that fail to check."""
         call_count = 0
 
-        async def mock_check_with_errors(request: Any, options: Any = None) -> MagicMock:
+        async def mock_check_with_errors(_request: Any, _options: Any = None) -> MagicMock:
             nonlocal call_count
             call_count += 1
             if call_count % 2 == 0:

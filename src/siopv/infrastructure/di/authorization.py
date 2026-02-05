@@ -90,7 +90,6 @@ def create_authorization_adapter(settings: Settings) -> OpenFGAAdapter:
     logger.info(
         "authorization_adapter_created",
         adapter_class="OpenFGAAdapter",
-        api_url=settings.openfga_api_url,
     )
 
     return adapter
