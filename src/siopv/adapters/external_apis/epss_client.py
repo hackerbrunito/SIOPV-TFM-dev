@@ -108,7 +108,7 @@ class EPSSClient(EPSSClientPort):
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=10),
         reraise=True,
-    )
+    )  # type: ignore[misc]
     async def _fetch_epss(self, cve_id: str) -> JsonDict | None:
         """Fetch EPSS data from API with retry logic.
 
@@ -202,7 +202,7 @@ class EPSSClient(EPSSClientPort):
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=10),
         reraise=True,
-    )
+    )  # type: ignore[misc]
     async def _fetch_epss_batch(self, cve_ids: list[str]) -> list[JsonDict]:
         """Fetch EPSS data for multiple CVEs in a single request.
 

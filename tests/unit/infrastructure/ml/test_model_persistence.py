@@ -25,7 +25,7 @@ from siopv.infrastructure.ml.model_persistence import (
 # === Fixtures ===
 
 
-@pytest.fixture
+@pytest.fixture()
 def temp_base_path(tmp_path: Path) -> Path:
     """Create a temporary directory for model storage using pytest tmp_path."""
     models_dir = tmp_path / "models"
@@ -33,20 +33,20 @@ def temp_base_path(tmp_path: Path) -> Path:
     return models_dir
 
 
-@pytest.fixture
+@pytest.fixture()
 def model_persistence(temp_base_path: Path) -> ModelPersistence:
     """Create a ModelPersistence instance."""
     return ModelPersistence(base_path=temp_base_path)
 
 
-@pytest.fixture
+@pytest.fixture()
 def model_persistence_with_signing(temp_base_path: Path) -> ModelPersistence:
     """Create a ModelPersistence instance with signing enabled."""
     return ModelPersistence(base_path=temp_base_path, signing_key="test-secret-key")
 
 
-@pytest.fixture
-def mock_model(tmp_path: Path) -> Mock:
+@pytest.fixture()
+def mock_model(tmp_path: Path) -> Mock:  # noqa: ARG001
     """Create a mock XGBoost model that actually writes files.
 
     FIXED: Creates actual files to test hash verification.
@@ -181,9 +181,7 @@ class TestModelPersistenceInit:
 class TestModelPersistenceSave:
     """Tests for model saving functionality."""
 
-    def test_save_model_with_metadata(
-        self, model_persistence: ModelPersistence, mock_model: Mock, temp_base_path: Path
-    ):
+    def test_save_model_with_metadata(self, model_persistence: ModelPersistence, mock_model: Mock):
         """Test saving model with metadata."""
         model_path = model_persistence.save_model_with_metadata(
             model=mock_model,
@@ -369,7 +367,7 @@ class TestModelPersistenceLoad:
         mock_model_class = Mock(return_value=loaded_mock)
 
         # Load without specifying version
-        loaded_model, metadata = model_persistence.load_model_with_metadata(
+        _loaded_model, metadata = model_persistence.load_model_with_metadata(
             model_class=mock_model_class,
             model_name="versioned_model",
         )
@@ -452,7 +450,7 @@ class TestModelPersistenceLoad:
         mock_model_class = Mock(return_value=loaded_mock)
 
         # Loading should succeed when verify_integrity=False
-        loaded_model, metadata = model_persistence.load_model_with_metadata(
+        loaded_model, _metadata = model_persistence.load_model_with_metadata(
             model_class=mock_model_class,
             model_name="skip_integrity_model",
             version="1.0.0",
@@ -476,7 +474,7 @@ class TestModelPersistenceLoad:
         mock_model_class = Mock(return_value=loaded_mock)
 
         # Loading should succeed with valid signature
-        loaded_model, metadata = model_persistence_with_signing.load_model_with_metadata(
+        loaded_model, _metadata = model_persistence_with_signing.load_model_with_metadata(
             model_class=mock_model_class,
             model_name="signed_load_model",
             version="1.0.0",

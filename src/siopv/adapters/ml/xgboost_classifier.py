@@ -586,7 +586,7 @@ class XGBoostClassifier(MLClassifierPort, ModelTrainerPort):
             random_state=random_state,
         )
 
-        return best_params
+        return best_params  # type: ignore[no-any-return]
 
 
 __all__ = ["XGBoostClassifier"]

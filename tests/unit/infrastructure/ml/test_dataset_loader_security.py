@@ -24,7 +24,7 @@ from siopv.infrastructure.ml.dataset_loader import (
 # === Fixtures ===
 
 
-@pytest.fixture
+@pytest.fixture()
 def valid_vulnerability_data() -> dict:
     """Create valid vulnerability data matching KEVVulnerability schema."""
     return {
@@ -41,7 +41,7 @@ def valid_vulnerability_data() -> dict:
     }
 
 
-@pytest.fixture
+@pytest.fixture()
 def valid_catalog_data(valid_vulnerability_data: dict) -> dict:
     """Create valid KEV catalog data matching KEVCatalog schema."""
     return {
@@ -53,7 +53,7 @@ def valid_catalog_data(valid_vulnerability_data: dict) -> dict:
     }
 
 
-@pytest.fixture
+@pytest.fixture()
 def kev_loader() -> CISAKEVLoader:
     """Create a CISAKEVLoader instance."""
     return CISAKEVLoader()
@@ -77,19 +77,19 @@ class TestKEVVulnerabilitySchema:
         assert vuln.due_date == "2021-12-24"
 
     @pytest.mark.parametrize(
-        "invalid_cve_id,description",
+        "invalid_cve_id",
         [
-            ("CVE-21-44228", "Two-digit year"),
-            ("CVE-2021-123", "Three-digit sequence"),
-            ("CVE2021-44228", "Missing first hyphen"),
-            ("CVE-202144228", "Missing second hyphen"),
-            ("cve-2021-44228", "Lowercase CVE"),
-            ("CVE-2021-4422a", "Letter in sequence"),
-            ("CVE-ABCD-44228", "Non-numeric year"),
-            ("", "Empty string"),
-            ("CVE-", "Incomplete ID"),
-            ("VULN-2021-44228", "Wrong prefix"),
-            ("CVE-2021-0001-extra", "Extra segment"),
+            "CVE-21-44228",
+            "CVE-2021-123",
+            "CVE2021-44228",
+            "CVE-202144228",
+            "cve-2021-44228",
+            "CVE-2021-4422a",
+            "CVE-ABCD-44228",
+            "",
+            "CVE-",
+            "VULN-2021-44228",
+            "CVE-2021-0001-extra",
         ],
         ids=[
             "two-digit-year",
@@ -106,7 +106,7 @@ class TestKEVVulnerabilitySchema:
         ],
     )
     def test_invalid_cve_id_format_rejected(
-        self, valid_vulnerability_data: dict, invalid_cve_id: str, description: str
+        self, valid_vulnerability_data: dict, invalid_cve_id: str
     ) -> None:
         """Test that invalid CVE ID formats are rejected."""
         valid_vulnerability_data["cveID"] = invalid_cve_id
@@ -170,7 +170,7 @@ class TestKEVVulnerabilitySchema:
         assert len(errors) > 0
 
     @pytest.mark.parametrize(
-        "invalid_date,field",
+        ("invalid_date", "field"),
         [
             ("2021/12/10", "dateAdded"),
             ("12-10-2021", "dateAdded"),
@@ -325,7 +325,7 @@ class TestCVEIDRegex:
 class TestContentTypeValidation:
     """Tests for Content-Type header validation (M-02)."""
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_valid_content_type_accepted(
         self, kev_loader: CISAKEVLoader, valid_catalog_data: dict
     ) -> None:
@@ -343,7 +343,7 @@ class TestContentTypeValidation:
             cve_ids = await kev_loader.load_kev_catalog()
             assert len(cve_ids) == 1
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_content_type_with_charset_accepted(
         self, kev_loader: CISAKEVLoader, valid_catalog_data: dict
     ) -> None:
@@ -361,7 +361,7 @@ class TestContentTypeValidation:
             cve_ids = await kev_loader.load_kev_catalog()
             assert len(cve_ids) == 1
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     @pytest.mark.parametrize(
         "invalid_content_type",
         [
@@ -410,7 +410,7 @@ class TestResponseSizeLimit:
         loader = CISAKEVLoader(max_response_size=custom_size)
         assert loader._max_response_size == custom_size
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_content_length_exceeds_limit_rejected(self) -> None:
         """Test that Content-Length exceeding limit is rejected."""
         small_limit = 1000  # 1KB
@@ -430,7 +430,7 @@ class TestResponseSizeLimit:
             with pytest.raises(SchemaValidationError, match="exceeds maximum"):
                 await loader.load_kev_catalog()
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_actual_content_exceeds_limit_rejected(self) -> None:
         """Test that actual content exceeding limit is rejected."""
         small_limit = 100  # 100 bytes
@@ -449,7 +449,7 @@ class TestResponseSizeLimit:
             with pytest.raises(SchemaValidationError, match="exceeds maximum"):
                 await loader.load_kev_catalog()
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_response_within_limit_accepted(self, valid_catalog_data: dict) -> None:
         """Test that response within limit is accepted."""
         loader = CISAKEVLoader(max_response_size=10 * 1024 * 1024)
@@ -474,7 +474,7 @@ class TestResponseSizeLimit:
 class TestMalformedJSONHandling:
     """Tests for malformed JSON response handling (M-02)."""
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_malformed_json_raises_schema_error(self, kev_loader: CISAKEVLoader) -> None:
         """Test that malformed JSON raises SchemaValidationError."""
         with patch("httpx.AsyncClient") as mock_client_class:
@@ -490,7 +490,7 @@ class TestMalformedJSONHandling:
             with pytest.raises(SchemaValidationError, match="Failed to parse JSON"):
                 await kev_loader.load_kev_catalog()
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_schema_mismatch_raises_error(self, kev_loader: CISAKEVLoader) -> None:
         """Test that schema mismatch raises SchemaValidationError."""
         invalid_structure = {
@@ -515,7 +515,7 @@ class TestMalformedJSONHandling:
 class TestHTTPClientSecurity:
     """Tests for secure HTTP client configuration (M-02)."""
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_ssl_verification_enabled(self, valid_catalog_data: dict) -> None:
         """Test that SSL verification is enabled (verify=True)."""
         loader = CISAKEVLoader()
@@ -536,7 +536,7 @@ class TestHTTPClientSecurity:
             call_kwargs = mock_client_class.call_args[1]
             assert call_kwargs.get("verify") is True
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_redirects_disabled(self, valid_catalog_data: dict) -> None:
         """Test that redirects are disabled (follow_redirects=False)."""
         loader = CISAKEVLoader()
@@ -557,7 +557,7 @@ class TestHTTPClientSecurity:
             call_kwargs = mock_client_class.call_args[1]
             assert call_kwargs.get("follow_redirects") is False
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_timeout_is_configured(self, valid_catalog_data: dict) -> None:
         """Test that timeout is configured."""
         custom_timeout = 60.0
@@ -595,7 +595,7 @@ class TestExpectedContentTypes:
 class TestSchemaValidationIntegration:
     """Integration tests for complete schema validation flow."""
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_full_validation_pipeline(self, valid_catalog_data: dict) -> None:
         """Test complete validation pipeline from HTTP response to parsed data."""
         loader = CISAKEVLoader()
@@ -624,7 +624,7 @@ class TestSchemaValidationIntegration:
             assert len(loader._cached_kev) == 1
             assert loader._cached_kev[0].cve_id == "CVE-2021-44228"
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_multiple_vulnerabilities_all_validated(self) -> None:
         """Test that all vulnerabilities in catalog are validated."""
         catalog_data = {
@@ -685,7 +685,7 @@ class TestSchemaValidationIntegration:
             assert "CVE-2021-34473" in cve_ids
             assert "CVE-2020-1472" in cve_ids
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_one_invalid_vulnerability_fails_entire_catalog(self) -> None:
         """Test that one invalid vulnerability fails the entire catalog validation."""
         catalog_data = {

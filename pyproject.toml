@@ -118,17 +118,24 @@ select = [
 ignore = [
     "PLR0913",  # too many arguments
     "TRY003",   # long exception messages
+    "ISC001",   # implicit-str-concat (conflicts with formatter)
+    "COM812",   # missing-trailing-comma (conflicts with formatter)
 ]
 
 [tool.ruff.lint.isort]
 known-first-party = ["siopv"]
 
 [tool.ruff.lint.per-file-ignores]
+"src/domain/learning/*.py" = ["N803", "N806"]
+"src/siopv/adapters/ml/*.py" = ["N803", "N806"]  # ML convention: X, y for features/labels
+"src/siopv/application/ports/ml_classifier.py" = ["N803", "N806"]  # ML interface matches adapters
 "tests/**/*.py" = [
     "PLR2004",  # Magic values acceptable in tests
     "PLC0415",  # Import in function acceptable in tests
     "EM101",    # Exception literals acceptable in tests
     "TRY301",   # Raise in try acceptable in tests
+    "N803",     # lowercase argument names acceptable in tests
+    "N806",     # lowercase variables in functions acceptable in tests
 ]
 
 [tool.mypy]

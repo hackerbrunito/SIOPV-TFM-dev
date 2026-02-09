@@ -102,14 +102,16 @@ class TestGetRandomStateFunction:
 
     def test_reads_from_siopv_environment_variable(self) -> None:
         """Test that function reads SIOPV_ENVIRONMENT env var."""
-        with patch.dict(os.environ, {"SIOPV_ENVIRONMENT": "production"}):
-            with patch("siopv.adapters.ml.xgboost_classifier.secrets") as mock_secrets:
-                mock_secrets.randbelow.return_value = 111222333
+        with (
+            patch.dict(os.environ, {"SIOPV_ENVIRONMENT": "production"}),
+            patch("siopv.adapters.ml.xgboost_classifier.secrets") as mock_secrets,
+        ):
+            mock_secrets.randbelow.return_value = 111222333
 
-                result = _get_random_state(configured_value=None)
+            result = _get_random_state(configured_value=None)
 
-                mock_secrets.randbelow.assert_called_once()
-                assert result == 111222333
+            mock_secrets.randbelow.assert_called_once()
+            assert result == 111222333
 
     def test_environment_parameter_overrides_env_var(self) -> None:
         """Test that environment parameter overrides env var."""
@@ -208,7 +210,7 @@ class TestXGBoostClassifierTrainingRandomState:
     the evaluate() call within train(). Fix the import to make it unconditional.
     """
 
-    @pytest.fixture
+    @pytest.fixture()
     def minimal_training_data(self):
         """Create minimal training data for fast tests."""
         X = []

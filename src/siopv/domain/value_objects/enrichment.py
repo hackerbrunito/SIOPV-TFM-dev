@@ -14,6 +14,11 @@ from typing import Annotated, Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from siopv.domain.constants import (
+    EPSS_HIGH_RISK_THRESHOLD,
+    RELEVANCE_SCORE_OSINT_FALLBACK_THRESHOLD,
+)
+
 
 class EPSSScore(BaseModel):
     """Value object representing EPSS (Exploit Prediction Scoring System) data.
@@ -55,7 +60,7 @@ class EPSSScore(BaseModel):
     @property
     def is_high_risk(self) -> bool:
         """Check if EPSS score indicates high exploitation risk (>0.1)."""
-        return self.score > 0.1
+        return self.score > EPSS_HIGH_RISK_THRESHOLD
 
     def __str__(self) -> str:
         return f"EPSS: {self.score:.4f} (percentile: {self.percentile:.2%})"
@@ -419,7 +424,7 @@ class EnrichmentData(BaseModel):
     @property
     def needs_osint_fallback(self) -> bool:
         """Check if OSINT fallback should be triggered (relevance < 0.6)."""
-        return self.relevance_score < 0.6
+        return self.relevance_score < RELEVANCE_SCORE_OSINT_FALLBACK_THRESHOLD
 
     def to_embedding_text(self) -> str:
         """Generate text representation for embedding.
@@ -437,9 +442,8 @@ class EnrichmentData(BaseModel):
         if self.epss:
             parts.append(f"EPSS Score: {self.epss.score:.4f}")
 
-        if self.github_advisory:
-            if self.github_advisory.summary:
-                parts.append(f"Advisory: {self.github_advisory.summary}")
+        if self.github_advisory and self.github_advisory.summary:
+            parts.append(f"Advisory: {self.github_advisory.summary}")
 
         return "\n".join(parts)
 

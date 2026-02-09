@@ -233,6 +233,54 @@ class ModelPersistence:
 
         return model_path
 
+    def _get_version_directory(self, model_dir: Path, version: str | None) -> Path:
+        """Get version directory, either specific version or latest."""
+        if version:
+            _validate_path_component(version, "version")
+            return model_dir / version
+
+        # Get latest version (only consider valid directory names)
+        valid_versions = [
+            d for d in model_dir.iterdir() if d.is_dir() and SAFE_PATH_COMPONENT_REGEX.match(d.name)
+        ]
+        if not valid_versions:
+            msg = f"No versions found for model: {model_dir.name}"
+            raise FileNotFoundError(msg)
+        return sorted(valid_versions)[-1]
+
+    def _verify_model_integrity(self, model_path: Path, metadata: dict[str, Any]) -> None:
+        """Verify model integrity using hash and optional signature."""
+        stored_hash = metadata["model_hash"]
+        computed_hash = _compute_file_hash(model_path)
+
+        if computed_hash != stored_hash:
+            msg = "Model integrity verification failed: hash mismatch"
+            raise IntegrityError(
+                msg,
+                details={
+                    "stored_hash": stored_hash[:16] + "...",
+                    "computed_hash": computed_hash[:16] + "...",
+                    "model_path": str(model_path),
+                },
+            )
+
+        # Verify HMAC signature if signing key is available
+        if self._signing_key and "model_signature" in metadata:
+            expected_signature = _compute_hmac_signature(stored_hash.encode(), self._signing_key)
+            if metadata["model_signature"] != expected_signature:
+                msg = "Model signature verification failed"
+                raise IntegrityError(
+                    msg,
+                    details={"model_path": str(model_path)},
+                )
+
+        logger.debug(
+            "model_integrity_verified",
+            model_path=str(model_path),
+            hash_verified=True,
+            signature_verified=self._signing_key is not None,
+        )
+
     def load_model_with_metadata(
         self,
         model_class: type[Any],
@@ -268,20 +316,7 @@ class ModelPersistence:
             raise FileNotFoundError(msg)
 
         # Get version directory
-        if version:
-            _validate_path_component(version, "version")
-            version_dir = model_dir / version
-        else:
-            # Get latest version (only consider valid directory names)
-            valid_versions = []
-            for d in model_dir.iterdir():
-                if d.is_dir() and SAFE_PATH_COMPONENT_REGEX.match(d.name):
-                    valid_versions.append(d)
-            if not valid_versions:
-                msg = f"No versions found for model: {model_name}"
-                raise FileNotFoundError(msg)
-            version_dir = sorted(valid_versions)[-1]
-
+        version_dir = self._get_version_directory(model_dir, version)
         self._validate_resolved_path(version_dir)
 
         # Load model
@@ -312,38 +347,7 @@ class ModelPersistence:
 
         # Verify integrity before loading (M-01 fix)
         if verify_integrity and "model_hash" in metadata:
-            stored_hash = metadata["model_hash"]
-            computed_hash = _compute_file_hash(model_path)
-
-            if computed_hash != stored_hash:
-                msg = "Model integrity verification failed: hash mismatch"
-                raise IntegrityError(
-                    msg,
-                    details={
-                        "stored_hash": stored_hash[:16] + "...",
-                        "computed_hash": computed_hash[:16] + "...",
-                        "model_path": str(model_path),
-                    },
-                )
-
-            # Verify HMAC signature if signing key is available
-            if self._signing_key and "model_signature" in metadata:
-                expected_signature = _compute_hmac_signature(
-                    stored_hash.encode(), self._signing_key
-                )
-                if metadata["model_signature"] != expected_signature:
-                    msg = "Model signature verification failed"
-                    raise IntegrityError(
-                        msg,
-                        details={"model_path": str(model_path)},
-                    )
-
-            logger.debug(
-                "model_integrity_verified",
-                model_path=str(model_path),
-                hash_verified=True,
-                signature_verified=self._signing_key is not None,
-            )
+            self._verify_model_integrity(model_path, metadata)
 
         # Now safe to load the model
         model = model_class()

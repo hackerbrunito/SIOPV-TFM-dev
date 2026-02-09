@@ -284,14 +284,14 @@ class PipelineGraphBuilder:
             raise RuntimeError(msg)
 
         checkpointer = self._create_checkpointer() if with_checkpointer else None
-        self._compiled = self._graph.compile(checkpointer=checkpointer)  # type: ignore[assignment]
+        self._compiled = self._graph.compile(checkpointer=checkpointer)
 
         logger.info(
             "pipeline_graph_compiled",
             with_checkpointer=with_checkpointer,
         )
 
-        return self._compiled  # type: ignore[return-value]
+        return self._compiled
 
     def get_compiled(self) -> CompiledStateGraph[PipelineState]:
         """Get the compiled graph, compiling if necessary.
@@ -310,7 +310,7 @@ class PipelineGraphBuilder:
             Mermaid diagram string
         """
         compiled = self.get_compiled()
-        return compiled.get_graph().draw_mermaid()
+        return compiled.get_graph().draw_mermaid()  # type: ignore[no-any-return]
 
     def save_visualization(self, output_path: Path | str) -> Path:
         """Save graph visualization to file.
@@ -434,7 +434,7 @@ def run_pipeline(
     )
 
     # Execute pipeline
-    result = graph.invoke(initial_state, config)  # type: ignore[arg-type]
+    result = graph.invoke(initial_state, config)
 
     logger.info(
         "pipeline_execution_complete",
@@ -446,7 +446,7 @@ def run_pipeline(
         error_count=len(result.get("errors", [])),
     )
 
-    return result  # type: ignore[return-value]
+    return result  # type: ignore[no-any-return]
 
 
 __all__ = [

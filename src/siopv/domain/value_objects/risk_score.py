@@ -13,6 +13,15 @@ from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from siopv.domain.constants import (
+    CONFIDENCE_CENTER_PROBABILITY,
+    CONFIDENCE_SCALE_FACTOR,
+    RISK_PROBABILITY_CRITICAL_THRESHOLD,
+    RISK_PROBABILITY_HIGH_THRESHOLD,
+    RISK_PROBABILITY_LOW_THRESHOLD,
+    RISK_PROBABILITY_MEDIUM_THRESHOLD,
+)
+
 
 class SHAPValues(BaseModel):
     """Value object representing SHAP feature importance values.
@@ -38,7 +47,7 @@ class SHAPValues(BaseModel):
 
     @field_validator("shap_values")
     @classmethod
-    def validate_shap_values(cls, v: list[float], info: object) -> list[float]:
+    def validate_shap_values(cls, v: list[float]) -> list[float]:
         """Validate SHAP values have same length as feature names."""
         return v
 
@@ -191,19 +200,19 @@ class RiskScore(BaseModel):
             RiskScore instance with appropriate label
         """
         # Determine risk label based on probability thresholds
-        if probability >= 0.8:
+        if probability >= RISK_PROBABILITY_CRITICAL_THRESHOLD:
             label = "CRITICAL"
-        elif probability >= 0.6:
+        elif probability >= RISK_PROBABILITY_HIGH_THRESHOLD:
             label = "HIGH"
-        elif probability >= 0.4:
+        elif probability >= RISK_PROBABILITY_MEDIUM_THRESHOLD:
             label = "MEDIUM"
-        elif probability >= 0.2:
+        elif probability >= RISK_PROBABILITY_LOW_THRESHOLD:
             label = "LOW"
         else:
             label = "MINIMAL"
 
         # Calculate confidence based on how far from 0.5 the prediction is
-        confidence = abs(probability - 0.5) * 2
+        confidence = abs(probability - CONFIDENCE_CENTER_PROBABILITY) * CONFIDENCE_SCALE_FACTOR
 
         return cls(
             cve_id=cve_id,
@@ -218,12 +227,12 @@ class RiskScore(BaseModel):
     @property
     def is_high_risk(self) -> bool:
         """Check if classified as high risk (>= 0.6)."""
-        return self.risk_probability >= 0.6
+        return self.risk_probability >= RISK_PROBABILITY_HIGH_THRESHOLD
 
     @property
     def requires_immediate_action(self) -> bool:
         """Check if requires immediate action (>= 0.8)."""
-        return self.risk_probability >= 0.8
+        return self.risk_probability >= RISK_PROBABILITY_CRITICAL_THRESHOLD
 
     def to_output_tuple(self) -> tuple[float, SHAPValues | None, LIMEExplanation | None]:
         """Return the output tuple for LangGraph state propagation.

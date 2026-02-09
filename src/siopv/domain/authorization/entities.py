@@ -431,7 +431,7 @@ class AuthorizationResult(BaseModel):
             check_duration_ms=check_duration_ms,
         )
 
-    @computed_field  # type: ignore[prop-decorator]
+    @computed_field  # type: ignore[misc]
     @property
     def audit_log_entry(self) -> dict[str, Any]:
         """Generate a structured audit log entry with PII redaction.
@@ -512,13 +512,13 @@ class BatchAuthorizationResult(BaseModel):
         Field(ge=0.0, default=0.0, description="Total time for batch check"),
     ]
 
-    @computed_field  # type: ignore[prop-decorator]
+    @computed_field  # type: ignore[misc]
     @property
     def all_allowed(self) -> bool:
         """Check if all authorizations in the batch were allowed."""
         return all(r.allowed for r in self.results)
 
-    @computed_field  # type: ignore[prop-decorator]
+    @computed_field  # type: ignore[misc]
     @property
     def any_denied(self) -> bool:
         """Check if any authorization in the batch was denied."""

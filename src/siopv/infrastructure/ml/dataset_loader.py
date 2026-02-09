@@ -75,7 +75,7 @@ class KEVVulnerability(BaseModel):
     def validate_date_format(cls, v: str) -> str:
         """Validate date is in YYYY-MM-DD format."""
         try:
-            datetime.strptime(v, "%Y-%m-%d")
+            datetime.strptime(v, "%Y-%m-%d").replace(tzinfo=UTC)
         except ValueError as e:
             msg = f"Invalid date format: {v}. Expected YYYY-MM-DD"
             raise ValueError(msg) from e

@@ -29,20 +29,20 @@ from siopv.infrastructure.ml.model_persistence import (
 # === Fixtures ===
 
 
-@pytest.fixture
+@pytest.fixture()
 def temp_base_path() -> Path:
     """Create a temporary directory for model storage."""
     with tempfile.TemporaryDirectory() as tmpdir:
         yield Path(tmpdir)
 
 
-@pytest.fixture
+@pytest.fixture()
 def model_persistence(temp_base_path: Path) -> ModelPersistence:
     """Create a ModelPersistence instance without signing key."""
     return ModelPersistence(base_path=temp_base_path)
 
 
-@pytest.fixture
+@pytest.fixture()
 def signed_model_persistence(temp_base_path: Path) -> ModelPersistence:
     """Create a ModelPersistence instance with signing key."""
     return ModelPersistence(
@@ -51,7 +51,7 @@ def signed_model_persistence(temp_base_path: Path) -> ModelPersistence:
     )
 
 
-@pytest.fixture
+@pytest.fixture()
 def mock_model():
     """Create a mock XGBoost model."""
     mock = Mock()
@@ -73,16 +73,16 @@ class TestPathTraversalProtection:
     """Tests for H-01 path traversal protection."""
 
     @pytest.mark.parametrize(
-        "model_name,description",
+        "model_name",
         [
-            ("../etc/passwd", "Parent directory traversal"),
-            ("../../etc/passwd", "Double parent directory traversal"),
-            ("models/../../../etc/passwd", "Nested traversal"),
-            ("..\\windows\\system32", "Windows-style parent traversal"),
-            ("/etc/passwd", "Absolute path Unix"),
-            ("C:\\Windows\\System32", "Absolute path Windows"),
-            ("model\\name", "Backslash in name"),
-            ("model/name", "Forward slash in name"),
+            "../etc/passwd",
+            "../../etc/passwd",
+            "models/../../../etc/passwd",
+            "..\\windows\\system32",
+            "/etc/passwd",
+            "C:\\Windows\\System32",
+            "model\\name",
+            "model/name",
         ],
         ids=[
             "single-parent-dir",
@@ -100,7 +100,6 @@ class TestPathTraversalProtection:
         model_persistence: ModelPersistence,
         mock_model,
         model_name: str,
-        description: str,
     ) -> None:
         """Test that save_model_with_metadata rejects path traversal attempts."""
         with pytest.raises(PathTraversalError, match="Path traversal"):
@@ -167,18 +166,18 @@ class TestPathTraversalProtection:
             )
 
     @pytest.mark.parametrize(
-        "invalid_char,description",
+        "invalid_char",
         [
-            ("model<name", "Less than"),
-            ("model>name", "Greater than"),
-            ("model|name", "Pipe"),
-            ("model:name", "Colon"),
-            ('model"name', "Quote"),
-            ("model*name", "Asterisk"),
-            ("model?name", "Question mark"),
-            ("model name", "Space"),
-            ("model\tname", "Tab"),
-            ("model\nname", "Newline"),
+            "model<name",
+            "model>name",
+            "model|name",
+            "model:name",
+            'model"name',
+            "model*name",
+            "model?name",
+            "model name",
+            "model\tname",
+            "model\nname",
         ],
         ids=[
             "less-than",
@@ -198,7 +197,6 @@ class TestPathTraversalProtection:
         model_persistence: ModelPersistence,
         mock_model,
         invalid_char: str,
-        description: str,
     ) -> None:
         """Test that special characters are rejected."""
         with pytest.raises(PathTraversalError, match="Invalid characters"):
@@ -300,10 +298,8 @@ class TestValidatePathComponent:
 
     def test_error_includes_component_name(self) -> None:
         """Test that error message includes component name."""
-        try:
+        with pytest.raises(PathTraversalError, match="model_name"):
             _validate_path_component("../bad", "model_name")
-        except PathTraversalError as e:
-            assert "model_name" in str(e)
 
 
 class TestSafePathRegex:
@@ -428,7 +424,7 @@ class TestModelIntegrityOnSave:
     """Tests for integrity hash stored on save (M-01)."""
 
     def test_save_includes_model_hash(
-        self, model_persistence: ModelPersistence, mock_model, temp_base_path: Path
+        self, model_persistence: ModelPersistence, mock_model
     ) -> None:
         """Test that saving model includes hash in metadata."""
         path = model_persistence.save_model_with_metadata(
@@ -498,7 +494,7 @@ class TestModelIntegrityOnLoad:
         mock_model_class = Mock(return_value=mock_model)
 
         # Should load without error (hash matches)
-        loaded_model, metadata = model_persistence.load_model_with_metadata(
+        loaded_model, _metadata = model_persistence.load_model_with_metadata(
             model_class=mock_model_class,
             model_name="verified_model",
             version="1.0.0",
@@ -508,7 +504,7 @@ class TestModelIntegrityOnLoad:
         assert loaded_model is mock_model
 
     def test_load_fails_if_hash_mismatch(
-        self, model_persistence: ModelPersistence, mock_model, temp_base_path: Path
+        self, model_persistence: ModelPersistence, mock_model
     ) -> None:
         """Test that load fails if model hash doesn't match."""
         # Save model
@@ -589,7 +585,7 @@ class TestModelIntegrityOnLoad:
             )
 
     def test_load_skips_verification_when_disabled(
-        self, model_persistence: ModelPersistence, mock_model, temp_base_path: Path
+        self, model_persistence: ModelPersistence, mock_model
     ) -> None:
         """Test that verification can be disabled."""
         # Save model
@@ -606,7 +602,7 @@ class TestModelIntegrityOnLoad:
         mock_model_class = Mock(return_value=mock_model)
 
         # Should NOT fail because verification is disabled
-        loaded_model, metadata = model_persistence.load_model_with_metadata(
+        loaded_model, _metadata = model_persistence.load_model_with_metadata(
             model_class=mock_model_class,
             model_name="skip_verify",
             version="1.0.0",

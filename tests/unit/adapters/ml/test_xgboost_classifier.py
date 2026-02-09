@@ -31,7 +31,7 @@ from siopv.domain.value_objects.risk_score import (
 # === Fixtures ===
 
 
-@pytest.fixture
+@pytest.fixture()
 def sample_feature_vector() -> MLFeatureVector:
     """Create a sample feature vector for testing."""
     return MLFeatureVector(
@@ -53,7 +53,7 @@ def sample_feature_vector() -> MLFeatureVector:
     )
 
 
-@pytest.fixture
+@pytest.fixture()
 def sample_training_data() -> tuple[list[MLFeatureVector], list[int]]:
     """Create sample training data."""
     np.random.seed(42)  # For reproducibility
@@ -109,7 +109,7 @@ def sample_training_data() -> tuple[list[MLFeatureVector], list[int]]:
     return X, y
 
 
-@pytest.fixture
+@pytest.fixture()
 def mock_xgb_model() -> Mock:
     """Create a mock XGBoost model with all required methods."""
     mock = MagicMock()
@@ -127,7 +127,7 @@ def mock_xgb_model() -> Mock:
     return mock
 
 
-@pytest.fixture
+@pytest.fixture()
 def mock_shap_values() -> SHAPValues:
     """Create mock SHAP values."""
     return SHAPValues(
@@ -152,7 +152,7 @@ def mock_shap_values() -> SHAPValues:
     )
 
 
-@pytest.fixture
+@pytest.fixture()
 def mock_lime_explanation() -> LIMEExplanation:
     """Create mock LIME explanation."""
     return LIMEExplanation(
@@ -167,7 +167,7 @@ def mock_lime_explanation() -> LIMEExplanation:
     )
 
 
-@pytest.fixture
+@pytest.fixture()
 def temp_model_path() -> Path:
     """Create a temporary path for model saving."""
     with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
@@ -436,7 +436,7 @@ class TestXGBoostClassifierTraining:
         mock_optuna.samplers.TPESampler.return_value = Mock()
 
         classifier = XGBoostClassifier()
-        metrics = classifier.train(X, y, optimize_hyperparams=True, n_trials=5)
+        classifier.train(X, y, optimize_hyperparams=True, n_trials=5)
 
         assert classifier.is_loaded()
         mock_optuna.create_study.assert_called_once()

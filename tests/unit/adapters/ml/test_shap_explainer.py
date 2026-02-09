@@ -19,7 +19,7 @@ from siopv.domain.value_objects.risk_score import SHAPValues
 # === Fixtures ===
 
 
-@pytest.fixture
+@pytest.fixture()
 def mock_xgboost_model() -> MagicMock:
     """Create a mock XGBoost model."""
     mock = MagicMock()
@@ -27,7 +27,7 @@ def mock_xgboost_model() -> MagicMock:
     return mock
 
 
-@pytest.fixture
+@pytest.fixture()
 def feature_names() -> list[str]:
     """Standard feature names."""
     return [
@@ -48,7 +48,7 @@ def feature_names() -> list[str]:
     ]
 
 
-@pytest.fixture
+@pytest.fixture()
 def sample_feature_vector() -> MLFeatureVector:
     """Create a sample feature vector."""
     return MLFeatureVector(
@@ -70,7 +70,7 @@ def sample_feature_vector() -> MLFeatureVector:
     )
 
 
-@pytest.fixture
+@pytest.fixture()
 def mock_tree_explainer() -> Mock:
     """Create a properly configured mock TreeExplainer.
 
@@ -110,7 +110,7 @@ def mock_tree_explainer() -> Mock:
     return mock
 
 
-@pytest.fixture
+@pytest.fixture()
 def shap_explainer(mock_xgboost_model, feature_names) -> SHAPExplainer:
     """Create a SHAP explainer with mocked model."""
     return SHAPExplainer(model=mock_xgboost_model, feature_names=feature_names)
@@ -336,9 +336,10 @@ class TestSHAPExplainerGlobalImportance:
         # epss_score should have highest importance
         assert importance["epss_score"] == max(importance.values())
 
-    @patch("siopv.adapters.ml.shap_explainer.shap.TreeExplainer")
     def test_get_global_importance_empty(
-        self, mock_tree_explainer_class, mock_xgboost_model, feature_names
+        self,
+        mock_xgboost_model,
+        feature_names,
     ):
         """Test global importance with empty input."""
         explainer = SHAPExplainer(model=mock_xgboost_model, feature_names=feature_names)
@@ -397,10 +398,7 @@ class TestSHAPExplainerSummaryData:
         assert feature_matrix.shape == (3, 14)
         assert names == feature_names
 
-    @patch("siopv.adapters.ml.shap_explainer.shap.TreeExplainer")
-    def test_generate_summary_data_empty(
-        self, mock_tree_explainer_class, mock_xgboost_model, feature_names
-    ):
+    def test_generate_summary_data_empty(self, mock_xgboost_model, feature_names):
         """Test summary data generation with empty input."""
         explainer = SHAPExplainer(model=mock_xgboost_model, feature_names=feature_names)
         shap_values, feature_matrix, names = explainer.generate_summary_data([])

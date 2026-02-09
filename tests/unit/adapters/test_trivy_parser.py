@@ -11,12 +11,12 @@ from siopv.domain.exceptions import TrivyParseError
 class TestTrivyParser:
     """Tests for TrivyParser class."""
 
-    @pytest.fixture
+    @pytest.fixture()
     def parser(self) -> TrivyParser:
         """Create a parser instance."""
         return TrivyParser()
 
-    @pytest.fixture
+    @pytest.fixture()
     def fixtures_path(self) -> Path:
         """Path to test fixtures."""
         return Path(__file__).parent.parent.parent / "fixtures"
@@ -237,9 +237,7 @@ class TestTrivyParser:
         assert parser.skipped_count == 1
         assert records[0].package_name == "valid-pkg"
 
-    def test_parse_dict_warns_on_schema_mismatch(
-        self, parser: TrivyParser, caplog: pytest.LogCaptureFixture
-    ) -> None:
+    def test_parse_dict_warns_on_schema_mismatch(self, parser: TrivyParser) -> None:
         """Test warning on schema version mismatch."""
         data = {
             "SchemaVersion": 99,  # Unexpected version

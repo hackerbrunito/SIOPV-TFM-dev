@@ -123,7 +123,7 @@ class NVDClient(NVDClientPort):
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=10),
         reraise=True,
-    )
+    )  # type: ignore[misc]
     async def _fetch_cve(self, cve_id: str) -> JsonDict | None:
         """Fetch CVE data from NVD API with retry logic.
 

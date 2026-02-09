@@ -21,7 +21,7 @@ from siopv.domain.value_objects.risk_score import RiskScore
 class TestClassifyNode:
     """Tests for classify_node function."""
 
-    @pytest.fixture
+    @pytest.fixture()
     def mock_vulnerability(self) -> MagicMock:
         """Create a mock VulnerabilityRecord."""
         mock = MagicMock(spec=VulnerabilityRecord)
@@ -29,7 +29,7 @@ class TestClassifyNode:
         mock.severity = "HIGH"
         return mock
 
-    @pytest.fixture
+    @pytest.fixture()
     def mock_enrichment(self) -> EnrichmentData:
         """Create mock EnrichmentData."""
         return EnrichmentData(
@@ -37,7 +37,7 @@ class TestClassifyNode:
             relevance_score=0.8,
         )
 
-    @pytest.fixture
+    @pytest.fixture()
     def mock_classifier(self) -> MagicMock:
         """Create mock ML classifier."""
         classifier = MagicMock()
@@ -134,7 +134,7 @@ class TestClassifyNode:
 class TestEstimateLLMConfidence:
     """Tests for _estimate_llm_confidence function."""
 
-    @pytest.fixture
+    @pytest.fixture()
     def mock_risk_score(self) -> RiskScore:
         """Create a mock RiskScore."""
         return RiskScore.from_prediction(
@@ -142,7 +142,7 @@ class TestEstimateLLMConfidence:
             probability=0.9,
         )
 
-    @pytest.fixture
+    @pytest.fixture()
     def mock_enrichment(self) -> EnrichmentData:
         """Create mock EnrichmentData with high relevance."""
         return EnrichmentData(
@@ -194,7 +194,7 @@ class TestEstimateLLMConfidence:
 class TestCreateMockClassifications:
     """Tests for _create_mock_classifications function."""
 
-    @pytest.fixture
+    @pytest.fixture()
     def mock_vulnerabilities(self) -> list[MagicMock]:
         """Create mock vulnerabilities with different severities."""
         vulns = []
@@ -238,7 +238,7 @@ class TestCreateMockClassifications:
         vuln.cve_id = CVEId(value="CVE-2024-9999")
         vuln.severity = "UNKNOWN"
 
-        classifications, llm_confidence = _create_mock_classifications([vuln], {})
+        classifications, _llm_confidence = _create_mock_classifications([vuln], {})
 
         assert "CVE-2024-9999" in classifications
         # Unknown should default to 0.4

@@ -1,0 +1,33 @@
+# Pre-commit configuration for SIOPV
+# See https://pre-commit.com for more information
+
+default_stages: [pre-commit]
+fail_fast: false
+
+repos:
+  # Ruff - Fast Python linter and formatter
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.4.10
+    hooks:
+      # Run the linter with auto-fix
+      - id: ruff
+        args: [--fix]
+        types_or: [python, pyi]
+      # Run the formatter
+      - id: ruff-format
+        types_or: [python, pyi]
+
+  # MyPy - Static type checker
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.9.0
+    hooks:
+      - id: mypy
+        args: [--strict]
+        additional_dependencies:
+          # Type stubs for dependencies
+          - types-requests
+          - types-python-dateutil
+          # Pydantic for validation
+          - pydantic>=2.0.0
+          - pydantic-settings>=2.0.0
+        files: ^src/

@@ -109,7 +109,7 @@ class MLFeatureVector(BaseModel):
             return int(v)
         return v
 
-    @computed_field  # type: ignore[prop-decorator]
+    @computed_field  # type: ignore[misc]
     @property
     def feature_names(self) -> list[str]:
         """Return ordered list of feature names for ML model."""

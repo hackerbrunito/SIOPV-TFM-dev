@@ -264,7 +264,7 @@ class OpenFGAAdapter(AuthorizationPort, AuthorizationStorePort, AuthorizationMod
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=1, max=10),
         reraise=True,
-    )
+    )  # type: ignore[misc]
     async def _execute_check(
         self,
         client: OpenFgaClient,
@@ -1085,7 +1085,7 @@ class OpenFGAAdapter(AuthorizationPort, AuthorizationStorePort, AuthorizationMod
                 response = await client.read_authorization_models()
 
             if not response.authorization_models:
-                raise AuthorizationModelError(
+                raise AuthorizationModelError(  # noqa: TRY301
                     model_id=None,
                     reason="No authorization models found in store",
                 )

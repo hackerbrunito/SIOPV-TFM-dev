@@ -53,10 +53,7 @@ def should_escalate_cve(
 
     # Check discrepancy
     discrepancy = abs(ml_score - llm_confidence)
-    if discrepancy > threshold:
-        return True
-
-    return False
+    return discrepancy > threshold
 
 
 def calculate_escalation_candidates(
