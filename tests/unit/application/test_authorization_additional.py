@@ -38,7 +38,7 @@ from siopv.domain.authorization import (
 class TestBatchCheckAuthorizationUseCaseErrors:
     """Test error paths in BatchCheckAuthorizationUseCase."""
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_execute_batch_port_error(self):
         """Test that port errors in batch check are wrapped in AuthorizationCheckError."""
         mock_port = MagicMock(spec=AuthorizationPort)
@@ -57,7 +57,7 @@ class TestBatchCheckAuthorizationUseCaseErrors:
         # Verify it's wrapped as an authorization check error
         assert exc_info.value.underlying_error is not None
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_execute_from_contexts_exceeds_limit_raises(self):
         """Test that exceeding batch limit in execute_from_contexts raises ValueError."""
         mock_port = MagicMock(spec=AuthorizationPort)
@@ -80,7 +80,7 @@ class TestBatchCheckAuthorizationUseCaseErrors:
         with pytest.raises(ValueError, match="exceeds maximum"):
             await use_case.execute_from_contexts(contexts)
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_execute_from_contexts_port_error(self):
         """Test port errors in execute_from_contexts."""
         mock_port = MagicMock(spec=AuthorizationPort)
@@ -105,7 +105,7 @@ class TestBatchCheckAuthorizationUseCaseErrors:
 class TestManageRelationshipsUseCaseBatchErrors:
     """Test error paths in batch relationship management."""
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_grant_permissions_batch_port_error(self):
         """Test port error in batch grant permissions."""
         mock_port = MagicMock(spec=AuthorizationStorePort)
@@ -126,7 +126,7 @@ class TestManageRelationshipsUseCaseBatchErrors:
         assert all("Database error" in r.error for r in results)
         assert all(r.operation == "grant" for r in results)
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_revoke_permissions_batch_empty_raises(self):
         """Test that empty revocations list raises ValueError."""
         mock_port = MagicMock(spec=AuthorizationStorePort)
@@ -135,7 +135,7 @@ class TestManageRelationshipsUseCaseBatchErrors:
         with pytest.raises(ValueError, match="cannot be empty"):
             await use_case.revoke_permissions_batch([])
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_revoke_permissions_batch_exceeds_limit_raises(self):
         """Test that exceeding batch limit in revoke raises ValueError."""
         mock_port = MagicMock(spec=AuthorizationStorePort)
@@ -149,7 +149,7 @@ class TestManageRelationshipsUseCaseBatchErrors:
         with pytest.raises(ValueError, match="exceeds maximum"):
             await use_case.revoke_permissions_batch(revocations)
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_revoke_permissions_batch_port_error(self):
         """Test port error in batch revoke permissions."""
         mock_port = MagicMock(spec=AuthorizationStorePort)
@@ -170,7 +170,7 @@ class TestManageRelationshipsUseCaseBatchErrors:
         assert all("Database error" in r.error for r in results)
         assert all(r.operation == "revoke" for r in results)
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_revoke_permissions_batch_success(self):
         """Test successful batch revoke permissions."""
         mock_port = MagicMock(spec=AuthorizationStorePort)
@@ -198,7 +198,7 @@ class TestManageRelationshipsUseCaseBatchErrors:
 class TestAuthorizationParametrized:
     """Parametrized tests for various scenarios."""
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     @pytest.mark.parametrize("batch_size", [1, 50, 100])
     async def test_batch_check_various_sizes(
         self,
@@ -236,7 +236,7 @@ class TestAuthorizationParametrized:
         assert result.stats.total_checks == batch_size
         assert result.stats.allowed_count == batch_size
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     @pytest.mark.parametrize("grant_count", [1, 50, 100])
     async def test_grant_permissions_batch_various_sizes(
         self,
@@ -258,7 +258,7 @@ class TestAuthorizationParametrized:
         assert len(results) == grant_count
         assert all(r.success for r in results)
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     @pytest.mark.parametrize(
         ("error_type", "error_msg"),
         [

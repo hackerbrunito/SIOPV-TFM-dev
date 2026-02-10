@@ -29,20 +29,20 @@ from siopv.infrastructure.ml.model_persistence import (
 # === Fixtures ===
 
 
-@pytest.fixture()
+@pytest.fixture
 def temp_base_path() -> Path:
     """Create a temporary directory for model storage."""
     with tempfile.TemporaryDirectory() as tmpdir:
         yield Path(tmpdir)
 
 
-@pytest.fixture()
+@pytest.fixture
 def model_persistence(temp_base_path: Path) -> ModelPersistence:
     """Create a ModelPersistence instance without signing key."""
     return ModelPersistence(base_path=temp_base_path)
 
 
-@pytest.fixture()
+@pytest.fixture
 def signed_model_persistence(temp_base_path: Path) -> ModelPersistence:
     """Create a ModelPersistence instance with signing key."""
     return ModelPersistence(
@@ -51,7 +51,7 @@ def signed_model_persistence(temp_base_path: Path) -> ModelPersistence:
     )
 
 
-@pytest.fixture()
+@pytest.fixture
 def mock_model():
     """Create a mock XGBoost model."""
     mock = Mock()

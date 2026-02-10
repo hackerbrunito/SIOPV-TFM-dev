@@ -11,12 +11,12 @@ from siopv.domain.exceptions import TrivyParseError
 class TestTrivyParser:
     """Tests for TrivyParser class."""
 
-    @pytest.fixture()
+    @pytest.fixture
     def parser(self) -> TrivyParser:
         """Create a parser instance."""
         return TrivyParser()
 
-    @pytest.fixture()
+    @pytest.fixture
     def fixtures_path(self) -> Path:
         """Path to test fixtures."""
         return Path(__file__).parent.parent.parent / "fixtures"

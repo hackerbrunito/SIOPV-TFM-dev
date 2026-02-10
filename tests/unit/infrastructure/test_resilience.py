@@ -17,7 +17,7 @@ from siopv.infrastructure.resilience import (
 class TestCircuitBreaker:
     """Tests for CircuitBreaker."""
 
-    @pytest.fixture()
+    @pytest.fixture
     def breaker(self) -> CircuitBreaker:
         """Create a circuit breaker for testing."""
         return CircuitBreaker(
@@ -32,7 +32,7 @@ class TestCircuitBreaker:
         assert breaker.is_closed
         assert not breaker.is_open
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_success_keeps_circuit_closed(self, breaker: CircuitBreaker) -> None:
         """Test that successful calls keep circuit closed."""
         async with breaker:
@@ -40,7 +40,7 @@ class TestCircuitBreaker:
 
         assert breaker.state == CircuitState.CLOSED
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_failures_open_circuit(self, breaker: CircuitBreaker) -> None:
         """Test that failures open the circuit after threshold."""
         for i in range(3):
@@ -52,7 +52,7 @@ class TestCircuitBreaker:
         assert breaker.state == CircuitState.OPEN
         assert breaker.is_open
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_open_circuit_rejects_requests(self, breaker: CircuitBreaker) -> None:
         """Test that open circuit rejects new requests."""
         # Open the circuit
@@ -69,7 +69,7 @@ class TestCircuitBreaker:
         assert "circuit breaker open" in str(exc_info.value).lower()
         assert exc_info.value.service_name == "test_service"
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_half_open_after_timeout(self, breaker: CircuitBreaker) -> None:
         """Test that circuit goes to half-open after timeout."""
         # Open the circuit
@@ -86,7 +86,7 @@ class TestCircuitBreaker:
         # Should be half-open now
         assert breaker.state == CircuitState.HALF_OPEN
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_half_open_success_closes_circuit(self, breaker: CircuitBreaker) -> None:
         """Test that success in half-open state closes circuit."""
         # Open the circuit
@@ -105,7 +105,7 @@ class TestCircuitBreaker:
 
         assert breaker.state == CircuitState.CLOSED
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_half_open_failure_reopens_circuit(self, breaker: CircuitBreaker) -> None:
         """Test that failure in half-open state reopens circuit."""
         # Open the circuit
@@ -125,7 +125,7 @@ class TestCircuitBreaker:
 
         assert breaker.state == CircuitState.OPEN
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_decorator_usage(self) -> None:
         """Test circuit breaker as decorator."""
         breaker = CircuitBreaker("decorator_test", failure_threshold=2, recovery_timeout=1)
@@ -177,7 +177,7 @@ class TestCircuitBreaker:
 class TestRateLimiter:
     """Tests for RateLimiter."""
 
-    @pytest.fixture()
+    @pytest.fixture
     def limiter(self) -> RateLimiter:
         """Create a rate limiter for testing."""
         return RateLimiter(
@@ -187,14 +187,14 @@ class TestRateLimiter:
             max_queue_size=10,
         )
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_allows_requests_within_limit(self, limiter: RateLimiter) -> None:
         """Test that requests within limit are allowed."""
         # Should allow burst_size requests immediately
         for _ in range(5):
             await limiter.acquire()
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_rate_limits_excess_requests(self) -> None:
         """Test that excess requests are rate limited."""
         limiter = RateLimiter(
@@ -216,7 +216,7 @@ class TestRateLimiter:
         # Should have waited some time (token refill)
         assert elapsed >= 0.005  # At least some wait time
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_queue_overflow_raises_error(self) -> None:
         """Test that queue overflow raises error."""
         limiter = RateLimiter(
@@ -249,7 +249,7 @@ class TestRateLimiter:
             with contextlib.suppress(asyncio.CancelledError, RateLimitExceededError):
                 await task
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_decorator_usage(self) -> None:
         """Test rate limiter as decorator."""
         limiter = RateLimiter(
@@ -281,7 +281,7 @@ class TestRateLimiter:
         assert stats["refill_rate"] == 10.0
         assert stats["max_queue_size"] == 10
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_priority_queue(self) -> None:
         """Test that higher priority requests are processed first."""
         limiter = RateLimiter(

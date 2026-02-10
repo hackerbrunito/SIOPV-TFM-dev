@@ -25,7 +25,7 @@ from siopv.infrastructure.ml.model_persistence import (
 # === Fixtures ===
 
 
-@pytest.fixture()
+@pytest.fixture
 def temp_base_path(tmp_path: Path) -> Path:
     """Create a temporary directory for model storage using pytest tmp_path."""
     models_dir = tmp_path / "models"
@@ -33,19 +33,19 @@ def temp_base_path(tmp_path: Path) -> Path:
     return models_dir
 
 
-@pytest.fixture()
+@pytest.fixture
 def model_persistence(temp_base_path: Path) -> ModelPersistence:
     """Create a ModelPersistence instance."""
     return ModelPersistence(base_path=temp_base_path)
 
 
-@pytest.fixture()
+@pytest.fixture
 def model_persistence_with_signing(temp_base_path: Path) -> ModelPersistence:
     """Create a ModelPersistence instance with signing enabled."""
     return ModelPersistence(base_path=temp_base_path, signing_key="test-secret-key")
 
 
-@pytest.fixture()
+@pytest.fixture
 def mock_model(tmp_path: Path) -> Mock:  # noqa: ARG001
     """Create a mock XGBoost model that actually writes files.
 

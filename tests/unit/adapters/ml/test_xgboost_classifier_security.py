@@ -210,7 +210,7 @@ class TestXGBoostClassifierTrainingRandomState:
     the evaluate() call within train(). Fix the import to make it unconditional.
     """
 
-    @pytest.fixture()
+    @pytest.fixture
     def minimal_training_data(self):
         """Create minimal training data for fast tests."""
         X = []

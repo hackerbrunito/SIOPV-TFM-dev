@@ -19,7 +19,7 @@ from siopv.domain.value_objects.risk_score import LIMEExplanation
 # === Fixtures ===
 
 
-@pytest.fixture()
+@pytest.fixture
 def feature_names() -> list[str]:
     """Standard feature names."""
     return [
@@ -40,7 +40,7 @@ def feature_names() -> list[str]:
     ]
 
 
-@pytest.fixture()
+@pytest.fixture
 def sample_feature_vector() -> MLFeatureVector:
     """Create a sample feature vector."""
     return MLFeatureVector(
@@ -62,7 +62,7 @@ def sample_feature_vector() -> MLFeatureVector:
     )
 
 
-@pytest.fixture()
+@pytest.fixture
 def predict_fn():
     """Create a mock prediction function."""
 
@@ -73,14 +73,14 @@ def predict_fn():
     return _predict
 
 
-@pytest.fixture()
+@pytest.fixture
 def training_data() -> np.ndarray:
     """Create sample training data."""
     np.random.seed(42)
     return np.random.randn(100, 14)
 
 
-@pytest.fixture()
+@pytest.fixture
 def mock_lime_explanation() -> Mock:
     """Create a properly configured mock LIME Explanation object.
 
