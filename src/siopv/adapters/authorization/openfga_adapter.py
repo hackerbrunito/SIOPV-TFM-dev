@@ -264,7 +264,7 @@ class OpenFGAAdapter(AuthorizationPort, AuthorizationStorePort, AuthorizationMod
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=1, max=10),
         reraise=True,
-    )  # type: ignore[untyped-decorator]
+    )
     async def _execute_check(
         self,
         client: OpenFgaClient,

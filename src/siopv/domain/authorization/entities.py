@@ -431,6 +431,7 @@ class AuthorizationResult(BaseModel):
             check_duration_ms=check_duration_ms,
         )
 
+    # Pydantic @computed_field + @property known mypy incompatibility
     @computed_field  # type: ignore[prop-decorator]
     @property
     def audit_log_entry(self) -> dict[str, Any]:
@@ -512,12 +513,14 @@ class BatchAuthorizationResult(BaseModel):
         Field(ge=0.0, default=0.0, description="Total time for batch check"),
     ]
 
+    # Pydantic @computed_field + @property known mypy incompatibility
     @computed_field  # type: ignore[prop-decorator]
     @property
     def all_allowed(self) -> bool:
         """Check if all authorizations in the batch were allowed."""
         return all(r.allowed for r in self.results)
 
+    # Pydantic @computed_field + @property known mypy incompatibility
     @computed_field  # type: ignore[prop-decorator]
     @property
     def any_denied(self) -> bool:

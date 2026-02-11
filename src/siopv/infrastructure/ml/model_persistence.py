@@ -194,6 +194,7 @@ class ModelPersistence:
 
         # Save model
         model_path = model_dir / "model.json"
+        # model typed as object; xgboost.Booster.save_model exists at runtime
         model.save_model(str(model_path))  # type: ignore[attr-defined]
 
         # Compute model hash (M-01 fix)

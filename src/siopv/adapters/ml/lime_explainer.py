@@ -216,6 +216,7 @@ class LIMEExplainer:
 
         def predict_fn(X: np.ndarray) -> np.ndarray:
             """Wrapper for model's predict_proba."""
+            # model typed as object; sklearn API has predict_proba at runtime
             result: np.ndarray = model.predict_proba(X)  # type: ignore[attr-defined]
             return result
 

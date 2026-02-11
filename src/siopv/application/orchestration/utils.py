@@ -84,6 +84,7 @@ def calculate_escalation_candidates(
     # First pass: calculate all discrepancies and populate history
     discrepancies: dict[str, float] = {}
     for cve_id, classification in classifications.items():
+        # classification typed as object; is ClassificationResult at runtime
         if classification.risk_score is None:  # type: ignore[attr-defined]
             continue
 
@@ -108,6 +109,7 @@ def calculate_escalation_candidates(
     # Second pass: identify escalation candidates
     escalated: list[str] = []
     for cve_id, classification in classifications.items():
+        # classification typed as object; ClassificationResult at runtime
         ml_score = (
             classification.risk_score.risk_probability  # type: ignore[attr-defined]
             if classification.risk_score is not None  # type: ignore[attr-defined]
@@ -148,6 +150,7 @@ def check_any_escalation_needed(
     config = config or ThresholdConfig()
 
     for cve_id, classification in classifications.items():
+        # classification typed as object; ClassificationResult at runtime
         ml_score = (
             classification.risk_score.risk_probability  # type: ignore[attr-defined]
             if classification.risk_score is not None  # type: ignore[attr-defined]

@@ -53,6 +53,7 @@ def escalate_node(state: PipelineState) -> dict[str, object]:
 
     try:
         # Identify CVEs requiring escalation
+        # state.get returns object; typed dicts at runtime
         escalated = _identify_escalation_candidates(classifications, llm_confidence)  # type: ignore[arg-type]
 
         logger.info(
@@ -159,6 +160,7 @@ def get_escalation_summary(state: PipelineState) -> dict[str, object]:
     # - arg-type: lambda signature doesn't match expected Callable
     # - return-value: returning object instead of SupportsDunderLT
     escalated_details.sort(
+        # dict values typed as object; discrepancy is float|None at runtime
         key=lambda x: x["discrepancy"] if x["discrepancy"] is not None else 0,  # type: ignore[arg-type, return-value]
         reverse=True,
     )

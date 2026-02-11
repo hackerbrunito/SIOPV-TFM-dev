@@ -132,6 +132,7 @@ class ChromaDBAdapter(VectorStorePort):
             client = self._get_client()
 
             # Get or create collection (Context7 verified pattern)
+            # client typed as object; PersistentClient has this method at runtime
             self._collection = client.get_or_create_collection(  # type: ignore[attr-defined]
                 name=self._collection_name,
                 metadata={"description": "SIOPV vulnerability enrichment data"},
@@ -185,6 +186,7 @@ class ChromaDBAdapter(VectorStorePort):
         Returns:
             EnrichmentData instance
         """
+        # metadata values typed as object; full_data is str at runtime
         full_data = json.loads(metadata["full_data"])  # type: ignore[arg-type]
         return EnrichmentData.model_validate(full_data)
 
@@ -201,6 +203,7 @@ class ChromaDBAdapter(VectorStorePort):
         doc = self._enrichment_to_document(enrichment)
 
         # Upsert to handle duplicates
+        # doc values typed as object; chromadb expects str/dict at runtime
         collection.upsert(
             ids=[doc["id"]],  # type: ignore[list-item]
             documents=[doc["document"]],  # type: ignore[list-item]
@@ -211,7 +214,7 @@ class ChromaDBAdapter(VectorStorePort):
         self._cache.put(enrichment.cve_id, enrichment)
 
         logger.debug("chromadb_enrichment_stored", cve_id=enrichment.cve_id)
-        return doc["id"]  # type: ignore[return-value]
+        return doc["id"]  # type: ignore[return-value]  # doc["id"] is str at runtime
 
     async def store_enrichments_batch(self, enrichments: list[EnrichmentData]) -> list[str]:
         """Store multiple enrichments efficiently.
@@ -240,7 +243,7 @@ class ChromaDBAdapter(VectorStorePort):
             # Update cache
             self._cache.put(enrichment.cve_id, enrichment)
 
-        # Batch upsert
+        # Batch upsert — lists contain object but chromadb expects str/dict
         collection.upsert(
             ids=ids,  # type: ignore[arg-type]
             documents=documents,  # type: ignore[arg-type]
@@ -248,7 +251,7 @@ class ChromaDBAdapter(VectorStorePort):
         )
 
         logger.info("chromadb_batch_stored", count=len(enrichments))
-        return ids  # type: ignore[return-value]
+        return ids  # type: ignore[return-value]  # list[object] is list[str] at runtime
 
     async def query_similar(
         self,
@@ -287,6 +290,7 @@ class ChromaDBAdapter(VectorStorePort):
                 similarity = 1.0 / (1.0 + distance)
 
                 if similarity >= min_relevance:
+                    # metadata typed as Mapping but is dict at runtime
                     enrichment = self._document_to_enrichment(metadata)  # type: ignore[arg-type]
                     enrichments_with_scores.append((enrichment, similarity))
 
@@ -321,6 +325,7 @@ class ChromaDBAdapter(VectorStorePort):
 
         if results["metadatas"] and results["metadatas"][0]:
             metadata = results["metadatas"][0]
+            # metadata typed as Mapping but is dict at runtime
             enrichment = self._document_to_enrichment(metadata)  # type: ignore[arg-type]
 
             # Update cache
@@ -390,6 +395,7 @@ class ChromaDBAdapter(VectorStorePort):
         client = self._get_client()
 
         # Delete and recreate collection
+        # client typed as object; PersistentClient has this method at runtime
         client.delete_collection(self._collection_name)  # type: ignore[attr-defined]
         self._collection = None
 

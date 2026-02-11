@@ -202,6 +202,7 @@ class CircuitBreaker:
         """
 
         @wraps(func)
+        # ParamSpec wrapper; return always reached via decorated function
         async def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:  # type: ignore[return]
             async with self:
                 return await func(*args, **kwargs)

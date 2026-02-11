@@ -47,6 +47,7 @@ def should_escalate_route(state: dict[str, object]) -> RouteType:
         return "end"
 
     # Check if any CVE requires escalation
+    # state.get returns object; function expects typed dicts
     needs_escalation = _check_escalation_needed(classifications, llm_confidence)  # type: ignore[arg-type]
 
     if needs_escalation:
@@ -74,6 +75,7 @@ def _check_escalation_needed(
         True if any CVE should be escalated
     """
 
+    # dict[str, object] → dict[str, float] narrowing at call boundary
     return check_any_escalation_needed(classifications, llm_confidence)  # type: ignore[arg-type]
 
 
@@ -142,12 +144,14 @@ def calculate_batch_discrepancies(
 
     # First pass: calculate all discrepancies and update history
     for cve_id, classification in classifications.items():
+        # classification typed as object; is ClassificationResult at runtime
         if classification.risk_score is None:  # type: ignore[attr-defined]
             # Handle missing scores
             results.append(
                 DiscrepancyResult(
                     cve_id=cve_id,
                     ml_score=0.0,
+                    # dict values are object; float at runtime
                     llm_confidence=llm_confidence.get(cve_id, 0.5),  # type: ignore[arg-type]
                     discrepancy=1.0,  # Maximum uncertainty
                     should_escalate=True,
@@ -155,6 +159,7 @@ def calculate_batch_discrepancies(
             )
             continue
 
+        # classification typed as object; is ClassificationResult at runtime
         ml_score = classification.risk_score.risk_probability  # type: ignore[attr-defined]
         confidence = llm_confidence.get(cve_id, 0.5)
         discrepancy = abs(ml_score - confidence)
@@ -174,6 +179,7 @@ def calculate_batch_discrepancies(
     # Second pass: determine escalation with adaptive threshold
     final_results: list[DiscrepancyResult] = []
     for cve_id, classification in classifications.items():
+        # classification typed as object; is ClassificationResult at runtime
         if classification.risk_score is None:  # type: ignore[attr-defined]
             # Already handled above
             continue
@@ -184,6 +190,7 @@ def calculate_batch_discrepancies(
         result = calculate_discrepancy(
             cve_id=cve_id,
             ml_score=ml_score,
+            # dict values are object; float at runtime
             llm_confidence=confidence,  # type: ignore[arg-type]
             threshold=adaptive_threshold,
             config=config,
@@ -212,6 +219,7 @@ def route_after_classify(state: dict[str, object]) -> RouteType:
     if errors:
         logger.warning(
             "routing_to_end_due_to_errors",
+            # state.get returns object; is list at runtime
             error_count=len(errors),  # type: ignore[arg-type]
         )
         return "end"
@@ -236,6 +244,7 @@ def route_after_escalate(state: dict[str, object]) -> Literal["end"]:
     Returns:
         Always returns "end"
     """
+    # state.get returns object; is list at runtime
     escalated_count = len(state.get("escalated_cves", []))  # type: ignore[arg-type]
     logger.info(
         "routing_to_end_after_escalate",

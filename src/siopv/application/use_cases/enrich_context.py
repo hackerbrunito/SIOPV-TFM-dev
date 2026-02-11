@@ -256,6 +256,7 @@ class EnrichContextUseCase:
             nvd_task, epss_task, github_task
         )
 
+        # _safe_fetch returns object; typed results at runtime
         return EnrichmentSources(
             nvd=nvd_result,  # type: ignore[arg-type]
             epss=epss_result,  # type: ignore[arg-type]
@@ -273,6 +274,7 @@ class EnrichContextUseCase:
             Result or None on error
         """
         try:
+            # coro typed as object; is awaitable coroutine at runtime
             return await coro  # type: ignore[misc]
         except Exception as e:
             logger.warning("enrichment_source_error", source=source_name, error=str(e))

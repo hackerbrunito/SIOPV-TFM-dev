@@ -201,7 +201,7 @@ class GitHubAdvisoryClient(GitHubAdvisoryClientPort):
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=10),
         reraise=True,
-    )  # type: ignore[untyped-decorator]
+    )
     async def _execute_graphql(self, query: str, variables: dict[str, Any]) -> JsonDict:
         """Execute GraphQL query with retry logic.
 

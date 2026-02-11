@@ -88,4 +88,5 @@ def get_logger(name: str) -> structlog.stdlib.BoundLogger:
     Returns:
         Configured structlog bound logger.
     """
+    # structlog.get_logger returns BoundLogger but typed as Any
     return structlog.get_logger(name)  # type: ignore[no-any-return]

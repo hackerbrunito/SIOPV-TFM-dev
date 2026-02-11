@@ -65,11 +65,13 @@ def classify_node(
                 "classify_node_using_mock",
                 reason="no_classifier_provided",
             )
+            # state.get returns object; narrowed types at runtime
             classifications, llm_confidence = _create_mock_classifications(
                 vulnerabilities,  # type: ignore[arg-type]
                 enrichments,  # type: ignore[arg-type]
             )
         else:
+            # state.get returns object; narrowed types at runtime
             classifications, llm_confidence = _run_classification(
                 vulnerabilities=vulnerabilities,  # type: ignore[arg-type]
                 enrichments=enrichments,  # type: ignore[arg-type]
@@ -117,6 +119,7 @@ def _run_classification(
 
     use_case = ClassifyRiskUseCase(classifier=classifier)
 
+    # list[object]/dict[str, object] are typed lists/dicts at runtime
     result = use_case.execute_batch(vulnerabilities, enrichments)  # type: ignore[arg-type]
 
     # Convert results to dictionaries
@@ -133,9 +136,11 @@ def _run_classification(
         if classification_result.risk_score is not None:
             llm_confidence[cve_id] = _estimate_llm_confidence(
                 classification_result,
+                # enrichments values are object; EnrichmentData at runtime
                 enrichments.get(cve_id),  # type: ignore[arg-type]
             )
 
+    # typed dicts narrower than tuple[dict[str, object], ...] return type
     return classifications, llm_confidence  # type: ignore[return-value]
 
 
@@ -200,6 +205,7 @@ def _create_mock_classifications(
     llm_confidence: dict[str, float] = {}
 
     for vuln in vulnerabilities:
+        # vuln typed as object; is VulnerabilityRecord at runtime
         cve_id = vuln.cve_id.value  # type: ignore[attr-defined]
 
         # Estimate risk based on severity
@@ -210,6 +216,7 @@ def _create_mock_classifications(
             "LOW": 0.3,
             "UNKNOWN": 0.4,
         }
+        # vuln typed as object; VulnerabilityRecord has severity at runtime
         risk_probability = severity_risk_map.get(vuln.severity, 0.4)  # type: ignore[attr-defined]
 
         # Create mock risk score using factory method
@@ -226,6 +233,7 @@ def _create_mock_classifications(
         # Mock LLM confidence based on severity certainty
         llm_confidence[cve_id] = 0.6 + (risk_probability * 0.3)
 
+    # typed dicts narrower than tuple[dict[str, object], ...] return type
     return classifications, llm_confidence  # type: ignore[return-value]
 
 

@@ -109,6 +109,7 @@ class MLFeatureVector(BaseModel):
             return int(v)
         return v
 
+    # Pydantic @computed_field + @property known mypy incompatibility
     @computed_field  # type: ignore[prop-decorator]
     @property
     def feature_names(self) -> list[str]:

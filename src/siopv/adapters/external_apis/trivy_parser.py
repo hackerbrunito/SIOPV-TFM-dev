@@ -124,6 +124,7 @@ class TrivyParser:
         """
         results = data.get("Results", [])
 
+        # data.get returns object; Trivy JSON Results is list[dict] at runtime
         for result in results:  # type: ignore[attr-defined]
             target = result.get("Target", "")
             vulnerabilities = result.get("Vulnerabilities", [])

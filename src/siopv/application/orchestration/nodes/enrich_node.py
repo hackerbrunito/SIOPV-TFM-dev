@@ -72,6 +72,7 @@ def enrich_node(
         # Run async enrichment in sync context
         enrichments = asyncio.run(
             _run_enrichment(
+                # state.get returns object; is list[VulnerabilityRecord] at runtime
                 vulnerabilities=vulnerabilities,  # type: ignore[arg-type]
                 nvd_client=nvd_client,
                 epss_client=epss_client,
@@ -139,6 +140,7 @@ async def _run_enrichment(
         )
         return _create_minimal_enrichments(vulnerabilities)
 
+    # Ports checked non-None above; mypy can't narrow Optional after guard
     use_case = EnrichContextUseCase(
         nvd_client=nvd_client,  # type: ignore[arg-type]
         epss_client=epss_client,  # type: ignore[arg-type]
@@ -147,6 +149,7 @@ async def _run_enrichment(
         vector_store=vector_store,  # type: ignore[arg-type]
     )
 
+    # list[object] is list[VulnerabilityRecord] at runtime
     result = await use_case.execute_batch(
         vulnerabilities,  # type: ignore[arg-type]
         max_concurrent=max_concurrent,
@@ -158,6 +161,7 @@ async def _run_enrichment(
         if enrichment_result.enrichment is not None:
             enrichments[enrichment_result.cve_id] = enrichment_result.enrichment
 
+    # dict[str, EnrichmentData] narrower than dict[str, object] return type
     return enrichments  # type: ignore[return-value]
 
 
@@ -175,12 +179,14 @@ def _create_minimal_enrichments(vulnerabilities: list[object]) -> dict[str, obje
     """
     enrichments = {}
     for vuln in vulnerabilities:
+        # vuln typed as object; is VulnerabilityRecord at runtime
         cve_id = vuln.cve_id.value  # type: ignore[attr-defined]
         enrichments[cve_id] = EnrichmentData(
             cve_id=cve_id,
             relevance_score=0.5,  # Default relevance
         )
 
+    # dict narrower than LangGraph state return type
     return enrichments  # type: ignore[return-value]
 
 
@@ -225,6 +231,7 @@ async def enrich_node_async(
 
     try:
         enrichments = await _run_enrichment(
+            # state.get returns object; is list[VulnerabilityRecord] at runtime
             vulnerabilities=vulnerabilities,  # type: ignore[arg-type]
             nvd_client=nvd_client,
             epss_client=epss_client,

@@ -314,7 +314,7 @@ class PipelineGraphBuilder:
             Mermaid diagram string
         """
         compiled = self.get_compiled()
-        return compiled.get_graph().draw_mermaid()  # type: ignore[no-any-return]
+        return compiled.get_graph().draw_mermaid()
 
     def save_visualization(self, output_path: Path | str) -> Path:
         """Save graph visualization to file.
