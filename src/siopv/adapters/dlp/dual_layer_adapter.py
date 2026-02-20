@@ -1,0 +1,297 @@
+"""Dual-layer DLP adapter composing Presidio rule-based and Haiku semantic detection.
+
+Architecture:
+  Layer 1: PresidioAdapter — deterministic rule-based PII detection and anonymization.
+  Layer 2: _HaikuDLPAdapter — semantic LLM-based check for contextual/implicit PII.
+
+Layer 2 is invoked ONLY when Presidio finds zero entities, targeting edge cases
+such as internal hostnames, API keys embedded in prose, and contextual credentials
+that evade rule-based patterns.
+
+Design decisions:
+- Haiku invoked sparingly (only on Presidio misses) — cost optimization.
+- Fail-open on Haiku API errors — Presidio remains the primary protection layer.
+- JSON-structured Haiku prompt — enables programmatic sanitized text extraction.
+- Private _HaikuDLPAdapter is not part of the public API; use create_dual_layer_adapter().
+"""
+
+from __future__ import annotations
+
+import asyncio
+import functools
+import json
+import os
+
+import structlog
+
+from siopv.adapters.dlp._haiku_utils import (
+    MAX_TEXT_LENGTH,
+    create_haiku_client,
+    extract_text_from_response,
+    truncate_for_haiku,
+)
+from siopv.adapters.dlp.presidio_adapter import PresidioAdapter
+from siopv.domain.privacy.entities import DLPResult, SanitizationContext
+
+logger = structlog.get_logger(__name__)
+
+# Haiku prompt constants
+_HAIKU_SYSTEM_PROMPT = (
+    "You are a security-focused privacy reviewer. "
+    "Analyze text for sensitive data and return valid JSON only. "
+    "Do not explain — output JSON and nothing else."
+)
+
+_HAIKU_USER_PROMPT = """\
+Review this vulnerability description for any sensitive data that should be redacted:
+- Credentials, passwords, API keys, tokens
+- Internal hostnames, IP addresses, private URLs
+- Personal information (names, emails, phone numbers)
+- Any other information that should not appear in public reports
+
+Text to analyze:
+{text}
+
+Return JSON with exactly these keys:
+{{
+  "contains_sensitive": true or false,
+  "sanitized_text": "the text with sensitive data replaced by <REDACTED> tokens",
+  "reason": "brief explanation of what was found or why the text is clean"
+}}"""
+
+_HAIKU_MAX_TOKENS = 512
+
+
+class _HaikuDLPAdapter:
+    """Private Haiku-based DLP adapter returning full DLPResult.
+
+    This is an implementation detail of DualLayerDLPAdapter — not public API.
+    Calls Claude Haiku with a JSON-structured prompt and returns a DLPResult
+    whose sanitized_text comes directly from the model's response.
+
+    Fail-open design: any API error or JSON parse error returns the original
+    text unchanged so the pipeline is not blocked.
+    """
+
+    def __init__(
+        self,
+        api_key: str,
+        model: str = "claude-haiku-4-5-20251001",
+    ) -> None:
+        """Initialize with Anthropic API credentials.
+
+        Args:
+            api_key: Anthropic API key.
+            model: Claude model identifier (defaults to Haiku).
+        """
+
+        self._client = create_haiku_client(api_key)
+        self._model = model
+
+    async def sanitize(self, context: SanitizationContext) -> DLPResult:
+        """Run semantic DLP check via Haiku.
+
+        Truncates text longer than MAX_TEXT_LENGTH to limit cost.
+        Returns DLPResult.safe_text() on empty input or API errors (fail-open).
+
+        Args:
+            context: SanitizationContext with text to analyze.
+
+        Returns:
+            DLPResult with sanitized_text from Haiku if sensitive data found,
+            or safe_text result if clean or on error.
+        """
+        text = context.text
+        if not text.strip():
+            return DLPResult.safe_text(text)
+
+        text_to_check = truncate_for_haiku(text)
+        if len(text) > MAX_TEXT_LENGTH:
+            logger.warning(
+                "haiku_dlp_text_truncated",
+                original_length=len(text),
+                truncated_to=MAX_TEXT_LENGTH,
+            )
+
+        loop = asyncio.get_running_loop()
+        try:
+            prompt = _HAIKU_USER_PROMPT.format(text=text_to_check)
+            response = await loop.run_in_executor(
+                None,
+                functools.partial(
+                    self._client.messages.create,
+                    model=self._model,
+                    max_tokens=_HAIKU_MAX_TOKENS,
+                    system=_HAIKU_SYSTEM_PROMPT,
+                    messages=[{"role": "user", "content": prompt}],
+                ),
+            )
+
+            raw = extract_text_from_response(response)
+
+            # Strip markdown code fences if Haiku wraps JSON in them
+            if "```" in raw:
+                parts = raw.split("```")
+                # Take the block between the first pair of fences
+                raw = parts[1].lstrip("json").strip() if len(parts) > 1 else raw
+
+            parsed: dict[str, object] = json.loads(raw)
+            contains_sensitive: bool = bool(parsed.get("contains_sensitive", False))
+            sanitized_text: str = str(parsed.get("sanitized_text", text))
+            reason: str = str(parsed.get("reason", ""))
+
+            if contains_sensitive:
+                logger.info(
+                    "haiku_dlp_sensitive_found",
+                    model=self._model,
+                    reason=reason,
+                    text_length=len(text_to_check),
+                )
+                return DLPResult(
+                    original_text=text,
+                    sanitized_text=sanitized_text,
+                    detections=[],
+                    presidio_passed=True,
+                    semantic_passed=False,
+                )
+
+            logger.debug(
+                "haiku_dlp_clean",
+                model=self._model,
+                reason=reason,
+                text_length=len(text_to_check),
+            )
+            return DLPResult.safe_text(text)
+
+        except Exception:
+            # Fail-open: Presidio has already run; log and allow to proceed
+            logger.warning(
+                "haiku_dlp_api_error_fail_open",
+                model=self._model,
+                exc_info=True,
+            )
+            return DLPResult.safe_text(text)
+
+
+class DualLayerDLPAdapter:
+    """Dual-layer DLP combining Presidio rule-based and Haiku semantic detection.
+
+    Implements DLPPort via structural subtyping (Protocol).
+
+    Flow:
+      1. Layer 1: Run PresidioAdapter (rule-based PII detection + anonymization).
+      2. If Layer 1 finds entities → return Presidio result (Haiku skipped).
+      3. If Layer 1 finds 0 entities → run Layer 2 (_HaikuDLPAdapter).
+      4. Return Layer 2 result (may flag contextual PII Presidio missed).
+
+    Cost optimization: Haiku is invoked sparingly — only for texts that appear
+    clean after Presidio. Texts with detected PII are already sanitized and do
+    not need an additional semantic pass.
+    """
+
+    def __init__(
+        self,
+        presidio: PresidioAdapter,
+        haiku: _HaikuDLPAdapter,
+    ) -> None:
+        """Initialize with a pre-built Presidio and Haiku adapter.
+
+        The PresidioAdapter should be configured with enable_semantic_validation=False
+        so that Haiku is NOT called internally by Presidio — the DualLayer controls
+        when Haiku is invoked.
+
+        Args:
+            presidio: Pre-configured PresidioAdapter.
+            haiku: Pre-configured _HaikuDLPAdapter for semantic fallback.
+        """
+        self._presidio = presidio
+        self._haiku = haiku
+
+    async def sanitize(self, context: SanitizationContext) -> DLPResult:
+        """Sanitize text with dual-layer DLP.
+
+        Layer 1 always runs. Layer 2 runs only when Presidio finds 0 entities.
+
+        Args:
+            context: SanitizationContext with text and detection parameters.
+
+        Returns:
+            DLPResult from Presidio if entities were found, otherwise from Haiku.
+
+        Raises:
+            SanitizationError: If Presidio processing fails unexpectedly.
+        """
+        # Layer 1: Presidio rule-based detection (always runs)
+        presidio_result = await self._presidio.sanitize(context)
+
+        if presidio_result.total_redactions > 0:
+            # Presidio found and redacted PII — skip Haiku (cost optimization)
+            logger.debug(
+                "dual_layer_dlp_presidio_redacted",
+                redaction_count=presidio_result.total_redactions,
+                layer2_skipped=True,
+            )
+            return presidio_result
+
+        # Layer 2: Haiku semantic check (only for texts Presidio found clean)
+        logger.debug(
+            "dual_layer_dlp_escalating_to_haiku",
+            reason="presidio_zero_entities",
+        )
+        haiku_result = await self._haiku.sanitize(context)
+
+        logger.info(
+            "dual_layer_dlp_complete",
+            presidio_redactions=presidio_result.total_redactions,
+            haiku_semantic_passed=haiku_result.semantic_passed,
+        )
+        return haiku_result
+
+
+def create_dual_layer_adapter(
+    api_key: str | None = None,
+    haiku_model: str = "claude-haiku-4-5-20251001",
+) -> DualLayerDLPAdapter:
+    """Factory function for a fully configured DualLayerDLPAdapter.
+
+    Reads the Anthropic API key from the ``api_key`` parameter or falls back
+    to the ``ANTHROPIC_API_KEY`` environment variable.
+
+    The PresidioAdapter is initialized with ``enable_semantic_validation=False``
+    so that the DualLayer controls the Haiku invocation instead of Presidio
+    calling it internally on every text.
+
+    Args:
+        api_key: Anthropic API key. Falls back to ANTHROPIC_API_KEY env var.
+        haiku_model: Claude model identifier for semantic validation.
+
+    Returns:
+        Fully configured DualLayerDLPAdapter.
+
+    Example:
+        >>> adapter = create_dual_layer_adapter()
+        >>> result = await adapter.sanitize(SanitizationContext(text="..."))
+    """
+    resolved_key = api_key or os.environ.get("ANTHROPIC_API_KEY", "")
+
+    # Presidio without embedded Haiku — the DualLayer manages Haiku separately
+    presidio = PresidioAdapter(
+        api_key=resolved_key,
+        haiku_model=haiku_model,
+        enable_semantic_validation=False,
+    )
+    haiku = _HaikuDLPAdapter(api_key=resolved_key, model=haiku_model)
+
+    logger.info(
+        "dual_layer_dlp_adapter_created",
+        haiku_model=haiku_model,
+        semantic_validation="dual_layer",
+    )
+
+    return DualLayerDLPAdapter(presidio=presidio, haiku=haiku)
+
+
+__all__ = [
+    "DualLayerDLPAdapter",
+    "create_dual_layer_adapter",
+]
