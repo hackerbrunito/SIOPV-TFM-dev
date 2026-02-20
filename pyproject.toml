@@ -138,6 +138,7 @@ known-first-party = ["siopv"]
     "TRY301",   # Raise in try acceptable in tests
     "N803",     # lowercase argument names acceptable in tests
     "N806",     # lowercase variables in functions acceptable in tests
+    "PLW0108",  # lambda-assignment: lambda wrappers needed for monkeypatch.setattr descriptor protocol
 ]
 
 [tool.mypy]
@@ -151,6 +152,8 @@ module = [
     "imblearn.*",
     "lime.*",
     "openfga_sdk.*",
+    "presidio_analyzer.*",
+    "presidio_anonymizer.*",
     "shap.*",
     "sklearn.*",
 ]
