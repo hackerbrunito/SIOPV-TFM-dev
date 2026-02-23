@@ -88,6 +88,81 @@ class _HaikuDLPAdapter:
         self._client = create_haiku_client(api_key)
         self._model = model
 
+    async def _call_haiku_dlp(self, text: str) -> str:
+        """Call Haiku API for DLP analysis and return raw JSON string.
+
+        Strips markdown code fences if the model wraps its response in them.
+
+        Args:
+            text: The (possibly truncated) text to analyze.
+
+        Returns:
+            Raw JSON string from Haiku response.
+        """
+        loop = asyncio.get_running_loop()
+        prompt = _HAIKU_USER_PROMPT.format(text=text)
+        response = await loop.run_in_executor(
+            None,
+            functools.partial(
+                self._client.messages.create,
+                model=self._model,
+                max_tokens=_HAIKU_MAX_TOKENS,
+                system=_HAIKU_SYSTEM_PROMPT,
+                messages=[{"role": "user", "content": prompt}],
+            ),
+        )
+        raw = extract_text_from_response(response)
+        # Strip markdown code fences if Haiku wraps JSON in them
+        if "```" in raw:
+            parts = raw.split("```")
+            # Take the block between the first pair of fences
+            raw = parts[1].lstrip("json").strip() if len(parts) > 1 else raw
+        return raw
+
+    def _parse_haiku_response(
+        self,
+        raw: str,
+        original_text: str,
+        text_to_check: str,
+    ) -> DLPResult:
+        """Parse Haiku JSON response and return the appropriate DLPResult.
+
+        Args:
+            raw: Raw JSON string from the Haiku API.
+            original_text: The full original text (pre-truncation).
+            text_to_check: The (possibly truncated) text that was analyzed.
+
+        Returns:
+            DLPResult with sensitive data flagged, or safe_text if clean.
+        """
+        parsed: dict[str, object] = json.loads(raw)
+        contains_sensitive: bool = bool(parsed.get("contains_sensitive", False))
+        sanitized_text: str = str(parsed.get("sanitized_text", original_text))
+        reason: str = str(parsed.get("reason", ""))
+
+        if contains_sensitive:
+            logger.info(
+                "haiku_dlp_sensitive_found",
+                model=self._model,
+                reason=reason,
+                text_length=len(text_to_check),
+            )
+            return DLPResult(
+                original_text=original_text,
+                sanitized_text=sanitized_text,
+                detections=[],
+                presidio_passed=True,
+                semantic_passed=False,
+            )
+
+        logger.debug(
+            "haiku_dlp_clean",
+            model=self._model,
+            reason=reason,
+            text_length=len(text_to_check),
+        )
+        return DLPResult.safe_text(original_text)
+
     async def sanitize(self, context: SanitizationContext) -> DLPResult:
         """Run semantic DLP check via Haiku.
 
@@ -113,56 +188,9 @@ class _HaikuDLPAdapter:
                 truncated_to=MAX_TEXT_LENGTH,
             )
 
-        loop = asyncio.get_running_loop()
         try:
-            prompt = _HAIKU_USER_PROMPT.format(text=text_to_check)
-            response = await loop.run_in_executor(
-                None,
-                functools.partial(
-                    self._client.messages.create,
-                    model=self._model,
-                    max_tokens=_HAIKU_MAX_TOKENS,
-                    system=_HAIKU_SYSTEM_PROMPT,
-                    messages=[{"role": "user", "content": prompt}],
-                ),
-            )
-
-            raw = extract_text_from_response(response)
-
-            # Strip markdown code fences if Haiku wraps JSON in them
-            if "```" in raw:
-                parts = raw.split("```")
-                # Take the block between the first pair of fences
-                raw = parts[1].lstrip("json").strip() if len(parts) > 1 else raw
-
-            parsed: dict[str, object] = json.loads(raw)
-            contains_sensitive: bool = bool(parsed.get("contains_sensitive", False))
-            sanitized_text: str = str(parsed.get("sanitized_text", text))
-            reason: str = str(parsed.get("reason", ""))
-
-            if contains_sensitive:
-                logger.info(
-                    "haiku_dlp_sensitive_found",
-                    model=self._model,
-                    reason=reason,
-                    text_length=len(text_to_check),
-                )
-                return DLPResult(
-                    original_text=text,
-                    sanitized_text=sanitized_text,
-                    detections=[],
-                    presidio_passed=True,
-                    semantic_passed=False,
-                )
-
-            logger.debug(
-                "haiku_dlp_clean",
-                model=self._model,
-                reason=reason,
-                text_length=len(text_to_check),
-            )
-            return DLPResult.safe_text(text)
-
+            raw = await self._call_haiku_dlp(text_to_check)
+            return self._parse_haiku_response(raw, text, text_to_check)
         except Exception:
             # Fail-open: Presidio has already run; log and allow to proceed
             logger.warning(

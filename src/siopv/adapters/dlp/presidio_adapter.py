@@ -104,6 +104,46 @@ def _build_anonymizer() -> object:
     return AnonymizerEngine()
 
 
+def _anonymize_and_convert(
+    anonymizer: object,
+    text: str,
+    analyzer_results: list[object],
+) -> tuple[str, list[PIIDetection]]:
+    """Anonymize detected entities and convert results to domain value objects.
+
+    Args:
+        anonymizer: Configured AnonymizerEngine.
+        text: Original text to anonymize.
+        analyzer_results: Non-empty list of Presidio analyzer results.
+
+    Returns:
+        Tuple of (anonymized_text, list_of_pii_detections).
+    """
+    entity_types: set[str] = {r.entity_type for r in analyzer_results}  # type: ignore[attr-defined]
+    operators = {
+        entity: OperatorConfig("replace", {"new_value": f"<{entity}>"}) for entity in entity_types
+    }
+    # Fallback operator for any entity not explicitly mapped
+    operators["DEFAULT"] = OperatorConfig("replace", {"new_value": "<REDACTED>"})
+
+    anonymized = anonymizer.anonymize(  # type: ignore[attr-defined]
+        text=text,
+        analyzer_results=analyzer_results,
+        operators=operators,
+    )
+    detections: list[PIIDetection] = [
+        PIIDetection.from_presidio(
+            entity_type=r.entity_type,  # type: ignore[attr-defined]
+            start=r.start,  # type: ignore[attr-defined]
+            end=r.end,  # type: ignore[attr-defined]
+            score=r.score,  # type: ignore[attr-defined]
+            original_text=text,
+        )
+        for r in analyzer_results
+    ]
+    return anonymized.text, detections
+
+
 def _run_presidio(
     analyzer: object,
     anonymizer: object,
@@ -126,50 +166,54 @@ def _run_presidio(
         SanitizationError: On any Presidio processing error.
     """
     try:
-        # Step 1: Detect PII
         analyzer_results = analyzer.analyze(  # type: ignore[attr-defined]
             text=context.text,
             language=context.language,
             entities=context.entities_to_detect,
             score_threshold=context.score_threshold,
         )
-
         if not analyzer_results:
             return context.text, []
-
-        # Step 2: Build per-entity replacement operators (e.g. <PERSON>)
-        entity_types: set[str] = {r.entity_type for r in analyzer_results}
-        operators = {
-            entity: OperatorConfig("replace", {"new_value": f"<{entity}>"})
-            for entity in entity_types
-        }
-        # Fallback operator for any entity not explicitly mapped
-        operators["DEFAULT"] = OperatorConfig("replace", {"new_value": "<REDACTED>"})
-
-        # Step 3: Anonymize
-        anonymized = anonymizer.anonymize(  # type: ignore[attr-defined]
-            text=context.text,
-            analyzer_results=analyzer_results,
-            operators=operators,
-        )
-
-        # Step 4: Convert results to domain value objects
-        detections: list[PIIDetection] = [
-            PIIDetection.from_presidio(
-                entity_type=r.entity_type,
-                start=r.start,
-                end=r.end,
-                score=r.score,
-                original_text=context.text,
-            )
-            for r in analyzer_results
-        ]
-
+        return _anonymize_and_convert(anonymizer, context.text, analyzer_results)
     except Exception as exc:
         msg = f"Presidio processing failed: {exc}"
         raise SanitizationError(msg) from exc
-    else:
-        return anonymized.text, detections
+
+
+def _make_dlp_result(
+    context: SanitizationContext,
+    sanitized_text: str,
+    detections: list[PIIDetection],
+    presidio_passed: bool,
+    semantic_passed: bool,
+) -> DLPResult:
+    """Log sanitization completion and construct the DLPResult.
+
+    Args:
+        context: Original sanitization context (for original_text and logging).
+        sanitized_text: Text after Presidio anonymization.
+        detections: PII detections from Presidio analysis.
+        presidio_passed: Whether Presidio ran successfully.
+        semantic_passed: Whether Haiku semantic validation passed (or was skipped).
+
+    Returns:
+        DLPResult with all metadata populated.
+    """
+    logger.info(
+        "dlp_sanitization_complete",
+        original_length=len(context.text),
+        sanitized_length=len(sanitized_text),
+        detection_count=len(detections),
+        presidio_passed=presidio_passed,
+        semantic_passed=semantic_passed,
+    )
+    return DLPResult(
+        original_text=context.text,
+        sanitized_text=sanitized_text,
+        detections=detections,
+        presidio_passed=presidio_passed,
+        semantic_passed=semantic_passed,
+    )
 
 
 class PresidioAdapter:
@@ -239,17 +283,10 @@ class PresidioAdapter:
         loop = asyncio.get_running_loop()
         sanitized_text, detections = await loop.run_in_executor(
             None,
-            functools.partial(
-                _run_presidio,
-                self._analyzer,
-                self._anonymizer,
-                context,
-            ),
+            functools.partial(_run_presidio, self._analyzer, self._anonymizer, context),
         )
 
         presidio_passed = True  # Presidio ran successfully (redactions applied if needed)
-
-        # Optional semantic validation pass
         semantic_passed = True
         if self._haiku_validator is not None:
             semantic_passed = await self._haiku_validator.validate(
@@ -257,21 +294,8 @@ class PresidioAdapter:
                 detections=detections,
             )
 
-        logger.info(
-            "dlp_sanitization_complete",
-            original_length=len(context.text),
-            sanitized_length=len(sanitized_text),
-            detection_count=len(detections),
-            presidio_passed=presidio_passed,
-            semantic_passed=semantic_passed,
-        )
-
-        return DLPResult(
-            original_text=context.text,
-            sanitized_text=sanitized_text,
-            detections=detections,
-            presidio_passed=presidio_passed,
-            semantic_passed=semantic_passed,
+        return _make_dlp_result(
+            context, sanitized_text, detections, presidio_passed, semantic_passed
         )
 
 

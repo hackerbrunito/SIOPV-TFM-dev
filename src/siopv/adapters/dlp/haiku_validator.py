@@ -71,6 +71,63 @@ class HaikuSemanticValidatorAdapter:
         self._client = create_haiku_client(api_key)
         self._model = model
 
+    async def _call_haiku(self, prompt: str) -> str:
+        """Call Haiku API and return the raw response text.
+
+        Args:
+            prompt: Formatted validation prompt to send to the model.
+
+        Returns:
+            Raw text content from the Haiku response.
+        """
+        loop = asyncio.get_running_loop()
+        response = await loop.run_in_executor(
+            None,
+            functools.partial(
+                self._client.messages.create,
+                model=self._model,
+                max_tokens=10,
+                messages=[{"role": "user", "content": prompt}],
+            ),
+        )
+        return extract_text_from_response(response)
+
+    async def _run_haiku_check(
+        self,
+        text_to_validate: str,
+        detections: list[PIIDetection],
+    ) -> bool:
+        """Invoke Haiku, interpret the SAFE/UNSAFE response, and handle errors.
+
+        Args:
+            text_to_validate: The (possibly truncated) text to check.
+            detections: PII detections from Presidio (for logging context).
+
+        Returns:
+            True if Haiku reports SAFE or on any API error (fail-open).
+        """
+        try:
+            prompt = _VALIDATION_PROMPT.format(text=text_to_validate)
+            answer = (await self._call_haiku(prompt)).upper()
+            is_safe = answer == "SAFE"
+            logger.info(
+                "haiku_validator_result",
+                response=answer,
+                is_safe=is_safe,
+                text_length=len(text_to_validate),
+                detection_count=len(detections),
+            )
+        except Exception:
+            # Fail-open: Presidio has already run; log and allow to proceed
+            logger.warning(
+                "haiku_validator_api_error_fail_open",
+                model=self._model,
+                exc_info=True,
+            )
+            return True
+        else:
+            return is_safe
+
     async def validate(self, text: str, detections: list[PIIDetection]) -> bool:
         """Validate that sanitized text contains no remaining PII.
 
@@ -101,40 +158,7 @@ class HaikuSemanticValidatorAdapter:
                 truncated_to=MAX_TEXT_LENGTH,
             )
 
-        try:
-            prompt = _VALIDATION_PROMPT.format(text=text_to_validate)
-            loop = asyncio.get_running_loop()
-            response = await loop.run_in_executor(
-                None,
-                functools.partial(
-                    self._client.messages.create,
-                    model=self._model,
-                    max_tokens=10,
-                    messages=[{"role": "user", "content": prompt}],
-                ),
-            )
-
-            answer = extract_text_from_response(response).upper()
-            is_safe = answer == "SAFE"
-
-            logger.info(
-                "haiku_validator_result",
-                response=answer,
-                is_safe=is_safe,
-                text_length=len(text_to_validate),
-                detection_count=len(detections),
-            )
-
-        except Exception:
-            # Fail-open: Presidio has already run; log and allow to proceed
-            logger.warning(
-                "haiku_validator_api_error_fail_open",
-                model=self._model,
-                exc_info=True,
-            )
-            return True
-        else:
-            return is_safe
+        return await self._run_haiku_check(text_to_validate, detections)
 
 
 __all__ = ["HaikuSemanticValidatorAdapter"]
