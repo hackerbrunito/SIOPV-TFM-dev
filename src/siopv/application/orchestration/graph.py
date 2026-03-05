@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, cast
 import structlog
 from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.sqlite import SqliteSaver
+from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
@@ -171,35 +172,37 @@ class PipelineGraphBuilder:
             raise RuntimeError(msg)
 
         # Authorize node - Phase 5 gatekeeper (Zero Trust)
-        self._graph.add_node(
-            "authorize",
-            lambda state: authorization_node(
+        # async wrapper needed because authorization_node is async and
+        # Python does not support async lambda
+        async def _authorize_node(state: PipelineState) -> dict[str, object]:
+            return await authorization_node(
                 state,
                 authorization_port=self._authorization_port,
-            ),
-        )
+            )
+
+        self._graph.add_node("authorize", _authorize_node)
 
         # Ingest node - wraps Phase 1 use case
         self._graph.add_node("ingest", ingest_node)
 
         # DLP node - Phase 6 guardrail (sanitize vulnerability descriptions)
-        self._graph.add_node(
-            "dlp",
-            lambda state: dlp_node(state, dlp_port=self._dlp_port),
-        )
+        async def _dlp_node(state: PipelineState) -> dict[str, object]:
+            return await dlp_node(state, dlp_port=self._dlp_port)
+
+        self._graph.add_node("dlp", _dlp_node)
 
         # Enrich node - wraps Phase 2 use case with injected dependencies
-        self._graph.add_node(
-            "enrich",
-            lambda state: enrich_node(
+        async def _enrich_node(state: PipelineState) -> dict[str, object]:
+            return await enrich_node(
                 state,
                 nvd_client=self._nvd_client,
                 epss_client=self._epss_client,
                 github_client=self._github_client,
                 osint_client=self._osint_client,
                 vector_store=self._vector_store,
-            ),
-        )
+            )
+
+        self._graph.add_node("enrich", _enrich_node)
 
         # Classify node - wraps Phase 3 use case
         self._graph.add_node(
@@ -400,7 +403,7 @@ def create_pipeline_graph(
     return builder.build().compile(with_checkpointer=with_checkpointer)
 
 
-def run_pipeline(
+async def run_pipeline(
     report_path: str | Path,
     *,
     thread_id: str | None = None,
@@ -409,9 +412,18 @@ def run_pipeline(
     checkpoint_db_path: str | Path | None = None,
     authorization_port: AuthorizationPort | None = None,
     dlp_port: DLPPort | None = None,
+    nvd_client: NVDClientPort | None = None,
+    epss_client: EPSSClientPort | None = None,
+    github_client: GitHubAdvisoryClientPort | None = None,
+    osint_client: OSINTSearchClientPort | None = None,
+    vector_store: VectorStorePort | None = None,
     classifier: MLClassifierPort | None = None,
 ) -> PipelineState:
-    """Convenience function to run the full pipeline on a Trivy report.
+    """Run the full pipeline on a Trivy report (async).
+
+    Uses ``ainvoke()`` because some graph nodes are async
+    (authorization_node, dlp_node, enrich_node).
+    Callers in sync contexts (e.g. CLI) should wrap with ``asyncio.run()``.
 
     Args:
         report_path: Path to Trivy JSON report
@@ -421,6 +433,11 @@ def run_pipeline(
         checkpoint_db_path: Path to checkpoint database
         authorization_port: Optional authorization port for Phase 5 gatekeeper
         dlp_port: Optional DLP port for Phase 6 privacy guardrail
+        nvd_client: Optional NVD API client for enrichment
+        epss_client: Optional EPSS API client for enrichment
+        github_client: Optional GitHub Advisory client for enrichment
+        osint_client: Optional OSINT search client for enrichment
+        vector_store: Optional vector store for enrichment cache
         classifier: Optional ML classifier
 
     Returns:
@@ -435,13 +452,17 @@ def run_pipeline(
         project_id=project_id,
     )
 
-    # Create and compile graph
-    graph = create_pipeline_graph(
+    # Build graph without checkpointer first (checkpointer added below)
+    builder = PipelineGraphBuilder(
         checkpoint_db_path=checkpoint_db_path,
         authorization_port=authorization_port,
         dlp_port=dlp_port,
+        nvd_client=nvd_client,
+        epss_client=epss_client,
+        github_client=github_client,
+        osint_client=osint_client,
+        vector_store=vector_store,
         classifier=classifier,
-        with_checkpointer=checkpoint_db_path is not None,
     )
 
     # Configure execution
@@ -455,8 +476,22 @@ def run_pipeline(
         project_id=project_id,
     )
 
-    # Execute pipeline
-    result = graph.invoke(initial_state, config)
+    # Execute pipeline via ainvoke — required because some nodes are async.
+    # When checkpointing is requested, use AsyncSqliteSaver (the sync
+    # SqliteSaver does not support ainvoke).
+    if checkpoint_db_path is not None:
+        db_path = _validate_path(
+            Path(checkpoint_db_path),
+            allowed_extensions=ALLOWED_DB_EXTENSIONS,
+        )
+        async with AsyncSqliteSaver.from_conn_string(str(db_path)) as checkpointer:
+            graph = builder.build().compile(with_checkpointer=False)
+            # Attach async checkpointer to the compiled graph
+            graph.checkpointer = checkpointer
+            result = await graph.ainvoke(initial_state, config)
+    else:
+        graph = builder.build().compile(with_checkpointer=False)
+        result = await graph.ainvoke(initial_state, config)
 
     logger.info(
         "pipeline_execution_complete",

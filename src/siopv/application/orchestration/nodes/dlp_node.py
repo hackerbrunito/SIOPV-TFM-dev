@@ -64,7 +64,7 @@ def _build_dlp_result(per_cve: dict[str, object], vuln_count: int) -> dict[str, 
     }
 
 
-def dlp_node(
+async def dlp_node(
     state: PipelineState,
     *,
     dlp_port: DLPPort | None = None,
@@ -103,7 +103,7 @@ def dlp_node(
             "dlp_result": {"skipped": False, "processed": 0, "total_redactions": 0, "per_cve": {}},
         }
 
-    per_cve = asyncio.run(_run_dlp_for_vulns(vulnerabilities, dlp_port))
+    per_cve = await _run_dlp_for_vulns(vulnerabilities, dlp_port)
     return _build_dlp_result(per_cve, len(vulnerabilities))
 
 

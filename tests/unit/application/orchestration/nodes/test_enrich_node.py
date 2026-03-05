@@ -37,30 +37,32 @@ class TestEnrichNode:
             "vector_store": MagicMock(),
         }
 
-    def test_enrich_node_with_no_vulnerabilities(self):
+    async def test_enrich_node_with_no_vulnerabilities(self):
         """Test enrich node skips when no vulnerabilities."""
         state = create_initial_state()
 
-        result = enrich_node(state)
+        result = await enrich_node(state)
 
         assert result["enrichments"] == {}
         assert result["current_node"] == "enrich"
 
-    def test_enrich_node_with_missing_clients_uses_minimal(self, mock_vulnerability: MagicMock):
+    async def test_enrich_node_with_missing_clients_uses_minimal(
+        self, mock_vulnerability: MagicMock
+    ):
         """Test enrich node uses minimal enrichments when clients missing."""
         state = {
             **create_initial_state(),
             "vulnerabilities": [mock_vulnerability],
         }
 
-        result = enrich_node(state, nvd_client=None)
+        result = await enrich_node(state, nvd_client=None)
 
         assert result["current_node"] == "enrich"
         assert "enrichments" in result
         # Should have minimal enrichment for the CVE
         assert "CVE-2024-1234" in result["enrichments"]
 
-    def test_enrich_node_success_with_all_clients(
+    async def test_enrich_node_success_with_all_clients(
         self, mock_vulnerability: MagicMock, mock_clients: dict
     ):
         """Test enrich node success when all clients provided."""
@@ -81,12 +83,12 @@ class TestEnrichNode:
         ) as mock_run:
             mock_run.return_value = {"CVE-2024-1234": mock_enrichment}
 
-            result = enrich_node(state, **mock_clients)
+            result = await enrich_node(state, **mock_clients)
 
         assert result["current_node"] == "enrich"
         assert "CVE-2024-1234" in result["enrichments"]
 
-    def test_enrich_node_exception_handling(self, mock_vulnerability: MagicMock):
+    async def test_enrich_node_exception_handling(self, mock_vulnerability: MagicMock):
         """Test enrich node handles exceptions gracefully."""
         state = {
             **create_initial_state(),
@@ -94,10 +96,11 @@ class TestEnrichNode:
         }
 
         with patch(
-            "siopv.application.orchestration.nodes.enrich_node.asyncio.run",
+            "siopv.application.orchestration.nodes.enrich_node._run_enrichment",
+            new_callable=AsyncMock,
             side_effect=RuntimeError("Network error"),
         ):
-            result = enrich_node(state)
+            result = await enrich_node(state)
 
         assert result["enrichments"] == {}
         assert "errors" in result

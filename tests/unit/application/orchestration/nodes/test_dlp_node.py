@@ -84,28 +84,28 @@ def _make_per_cve_redacted(cve_id: str = "CVE-2024-5678") -> dict[str, object]:
 class TestDlpNodeNoPort:
     """dlp_node behaviour when no DLP port is configured."""
 
-    def test_dlp_node_no_port_returns_skipped(self) -> None:
+    async def test_dlp_node_no_port_returns_skipped(self) -> None:
         """dlp_port=None → dlp_result.skipped is True."""
         state: dict[str, object] = {"vulnerabilities": [_make_vuln()]}
 
-        result = dlp_node(state, dlp_port=None)  # type: ignore[arg-type]
+        result = await dlp_node(state, dlp_port=None)  # type: ignore[arg-type]
 
         assert result["dlp_result"]["skipped"] is True
         assert result["dlp_result"]["reason"] == "no_dlp_port"
 
-    def test_dlp_node_no_port_current_node_is_dlp(self) -> None:
+    async def test_dlp_node_no_port_current_node_is_dlp(self) -> None:
         """dlp_port=None still sets current_node to 'dlp'."""
         state: dict[str, object] = {"vulnerabilities": []}
 
-        result = dlp_node(state, dlp_port=None)  # type: ignore[arg-type]
+        result = await dlp_node(state, dlp_port=None)  # type: ignore[arg-type]
 
         assert result["current_node"] == "dlp"
 
-    def test_dlp_node_default_port_is_none(self) -> None:
+    async def test_dlp_node_default_port_is_none(self) -> None:
         """Calling dlp_node without dlp_port defaults to skip path."""
         state: dict[str, object] = {"vulnerabilities": []}
 
-        result = dlp_node(state)  # type: ignore[arg-type]
+        result = await dlp_node(state)  # type: ignore[arg-type]
 
         assert result["dlp_result"]["skipped"] is True
 
@@ -118,33 +118,33 @@ class TestDlpNodeNoPort:
 class TestDlpNodeEmptyVulnerabilities:
     """dlp_node behaviour with an empty vulnerability list."""
 
-    def test_dlp_node_empty_vulns_returns_processed_zero(self) -> None:
+    async def test_dlp_node_empty_vulns_returns_processed_zero(self) -> None:
         """Empty vulnerabilities list → processed=0, total_redactions=0."""
         mock_port = AsyncMock()
         state: dict[str, object] = {"vulnerabilities": []}
 
-        result = dlp_node(state, dlp_port=mock_port)  # type: ignore[arg-type]
+        result = await dlp_node(state, dlp_port=mock_port)  # type: ignore[arg-type]
 
         assert result["dlp_result"]["skipped"] is False
         assert result["dlp_result"]["processed"] == 0
         assert result["dlp_result"]["total_redactions"] == 0
         assert result["dlp_result"]["per_cve"] == {}
 
-    def test_dlp_node_empty_vulns_does_not_call_port(self) -> None:
+    async def test_dlp_node_empty_vulns_does_not_call_port(self) -> None:
         """DLP port is never called when there are no vulnerabilities."""
         mock_port = AsyncMock()
         state: dict[str, object] = {"vulnerabilities": []}
 
-        dlp_node(state, dlp_port=mock_port)  # type: ignore[arg-type]
+        await dlp_node(state, dlp_port=mock_port)  # type: ignore[arg-type]
 
         mock_port.sanitize.assert_not_called()
 
-    def test_dlp_node_missing_vulnerabilities_key_treated_as_empty(self) -> None:
+    async def test_dlp_node_missing_vulnerabilities_key_treated_as_empty(self) -> None:
         """State without 'vulnerabilities' key defaults to empty list."""
         mock_port = AsyncMock()
         state: dict[str, object] = {}
 
-        result = dlp_node(state, dlp_port=mock_port)  # type: ignore[arg-type]
+        result = await dlp_node(state, dlp_port=mock_port)  # type: ignore[arg-type]
 
         assert result["dlp_result"]["processed"] == 0
 
@@ -157,39 +157,41 @@ class TestDlpNodeEmptyVulnerabilities:
 class TestDlpNodeHappyPath:
     """dlp_node happy-path: vulnerabilities processed successfully."""
 
-    def test_dlp_node_clean_vuln_no_redactions(self) -> None:
+    async def test_dlp_node_clean_vuln_no_redactions(self) -> None:
         """Clean vulnerability (no PII) produces total_redactions=0."""
         mock_port = AsyncMock()
         per_cve = _make_per_cve_clean("CVE-2024-1234")
         state: dict[str, object] = {"vulnerabilities": [_make_vuln("CVE-2024-1234")]}
 
         with patch(
-            "siopv.application.orchestration.nodes.dlp_node.asyncio.run",
+            "siopv.application.orchestration.nodes.dlp_node._run_dlp_for_vulns",
+            new_callable=AsyncMock,
             return_value=per_cve,
         ):
-            result = dlp_node(state, dlp_port=mock_port)  # type: ignore[arg-type]
+            result = await dlp_node(state, dlp_port=mock_port)  # type: ignore[arg-type]
 
         assert result["dlp_result"]["skipped"] is False
         assert result["dlp_result"]["processed"] == 1
         assert result["dlp_result"]["total_redactions"] == 0
         assert "CVE-2024-1234" in result["dlp_result"]["per_cve"]
 
-    def test_dlp_node_redacted_vuln_has_redactions(self) -> None:
+    async def test_dlp_node_redacted_vuln_has_redactions(self) -> None:
         """Vulnerability with PII produces total_redactions > 0."""
         mock_port = AsyncMock()
         per_cve = _make_per_cve_redacted("CVE-2024-5678")
         state: dict[str, object] = {"vulnerabilities": [_make_vuln("CVE-2024-5678")]}
 
         with patch(
-            "siopv.application.orchestration.nodes.dlp_node.asyncio.run",
+            "siopv.application.orchestration.nodes.dlp_node._run_dlp_for_vulns",
+            new_callable=AsyncMock,
             return_value=per_cve,
         ):
-            result = dlp_node(state, dlp_port=mock_port)  # type: ignore[arg-type]
+            result = await dlp_node(state, dlp_port=mock_port)  # type: ignore[arg-type]
 
         assert result["dlp_result"]["total_redactions"] == 1
         assert result["dlp_result"]["per_cve"]["CVE-2024-5678"]["contains_pii"] is True
 
-    def test_dlp_node_multiple_vulns_all_processed(self) -> None:
+    async def test_dlp_node_multiple_vulns_all_processed(self) -> None:
         """Multiple vulnerabilities are all processed; redactions are summed."""
         mock_port = AsyncMock()
         per_cve = {
@@ -200,27 +202,29 @@ class TestDlpNodeHappyPath:
         state: dict[str, object] = {"vulnerabilities": vulns}
 
         with patch(
-            "siopv.application.orchestration.nodes.dlp_node.asyncio.run",
+            "siopv.application.orchestration.nodes.dlp_node._run_dlp_for_vulns",
+            new_callable=AsyncMock,
             return_value=per_cve,
         ):
-            result = dlp_node(state, dlp_port=mock_port)  # type: ignore[arg-type]
+            result = await dlp_node(state, dlp_port=mock_port)  # type: ignore[arg-type]
 
         assert result["dlp_result"]["processed"] == 2
         assert result["dlp_result"]["total_redactions"] == 1
         assert "CVE-2024-0001" in result["dlp_result"]["per_cve"]
         assert "CVE-2024-0002" in result["dlp_result"]["per_cve"]
 
-    def test_dlp_node_current_node_is_dlp_on_success(self) -> None:
+    async def test_dlp_node_current_node_is_dlp_on_success(self) -> None:
         """Successful execution sets current_node to 'dlp'."""
         mock_port = AsyncMock()
         per_cve = _make_per_cve_clean()
         state: dict[str, object] = {"vulnerabilities": [_make_vuln()]}
 
         with patch(
-            "siopv.application.orchestration.nodes.dlp_node.asyncio.run",
+            "siopv.application.orchestration.nodes.dlp_node._run_dlp_for_vulns",
+            new_callable=AsyncMock,
             return_value=per_cve,
         ):
-            result = dlp_node(state, dlp_port=mock_port)  # type: ignore[arg-type]
+            result = await dlp_node(state, dlp_port=mock_port)  # type: ignore[arg-type]
 
         assert result["current_node"] == "dlp"
 
@@ -233,19 +237,20 @@ class TestDlpNodeHappyPath:
 class TestDlpNodeErrorPath:
     """dlp_node error handling when the DLP port raises an exception."""
 
-    def test_dlp_node_port_raises_exception_propagates(self) -> None:
-        """Exceptions from asyncio.run propagate — no silent swallowing."""
+    async def test_dlp_node_port_raises_exception_propagates(self) -> None:
+        """Exceptions from _run_dlp_for_vulns propagate — no silent swallowing."""
         mock_port = AsyncMock()
         state: dict[str, object] = {"vulnerabilities": [_make_vuln()]}
 
         with (
             patch(
-                "siopv.application.orchestration.nodes.dlp_node.asyncio.run",
+                "siopv.application.orchestration.nodes.dlp_node._run_dlp_for_vulns",
+                new_callable=AsyncMock,
                 side_effect=RuntimeError("DLP service unavailable"),
             ),
             pytest.raises(RuntimeError, match="DLP service unavailable"),
         ):
-            dlp_node(state, dlp_port=mock_port)  # type: ignore[arg-type]
+            await dlp_node(state, dlp_port=mock_port)  # type: ignore[arg-type]
 
 
 # ---------------------------------------------------------------------------

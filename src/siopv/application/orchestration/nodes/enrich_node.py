@@ -5,7 +5,6 @@ Handles Phase 2: Context enrichment using CRAG pattern.
 
 from __future__ import annotations
 
-import asyncio
 from typing import TYPE_CHECKING
 
 import structlog
@@ -26,7 +25,7 @@ if TYPE_CHECKING:
 logger = structlog.get_logger(__name__)
 
 
-def enrich_node(
+async def enrich_node(
     state: PipelineState,
     *,
     nvd_client: NVDClientPort | None = None,
@@ -69,18 +68,16 @@ def enrich_node(
         }
 
     try:
-        # Run async enrichment in sync context
-        enrichments = asyncio.run(
-            _run_enrichment(
-                # state.get returns object; is list[VulnerabilityRecord] at runtime
-                vulnerabilities=vulnerabilities,  # type: ignore[arg-type]
-                nvd_client=nvd_client,
-                epss_client=epss_client,
-                github_client=github_client,
-                osint_client=osint_client,
-                vector_store=vector_store,
-                max_concurrent=max_concurrent,
-            )
+        # Run async enrichment
+        enrichments = await _run_enrichment(
+            # state.get returns object; is list[VulnerabilityRecord] at runtime
+            vulnerabilities=vulnerabilities,  # type: ignore[arg-type]
+            nvd_client=nvd_client,
+            epss_client=epss_client,
+            github_client=github_client,
+            osint_client=osint_client,
+            vector_store=vector_store,
+            max_concurrent=max_concurrent,
         )
 
         logger.info(

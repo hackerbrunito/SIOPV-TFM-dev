@@ -43,6 +43,10 @@ from siopv.infrastructure.di.authorization import (
     get_authorization_port,
     get_authorization_store_port,
 )
+from siopv.infrastructure.di.dlp import (
+    get_dlp_port,
+    get_dual_layer_dlp_port,
+)
 
 __all__ = [
     "create_authorization_adapter",
@@ -51,5 +55,7 @@ __all__ = [
     "get_authorization_model_port",
     "get_authorization_port",
     "get_authorization_store_port",
+    "get_dlp_port",
+    "get_dual_layer_dlp_port",
     "get_oidc_authentication_port",
 ]

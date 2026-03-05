@@ -19,7 +19,6 @@ Per spec section 3.5:
 
 from __future__ import annotations
 
-import asyncio
 import hashlib
 from typing import TYPE_CHECKING
 
@@ -171,14 +170,11 @@ def _handle_no_port(user_id: str, project_id: str | None) -> dict[str, object]:
     )
 
 
-def _run_authorization_check(
+async def _run_authorization_check(
     port: AuthorizationPort,
     context: AuthorizationContext,
 ) -> AuthorizationResult:
-    """Run async authorization check in sync context.
-
-    LangGraph nodes are synchronous, but the authorization port is async.
-    This helper bridges the gap using asyncio.run().
+    """Run async authorization check.
 
     Args:
         port: Authorization port (async)
@@ -186,12 +182,8 @@ def _run_authorization_check(
 
     Returns:
         AuthorizationResult from the port
-
-    Note:
-        If called from an async context, the caller should use the async
-        port.check() method directly instead of this helper.
     """
-    return asyncio.run(port.check(context))
+    return await port.check(context)
 
 
 def _log_and_create_allowed_state(
@@ -264,7 +256,7 @@ def _log_and_create_denied_state(
     )
 
 
-def _execute_authorization_check(
+async def _execute_authorization_check(
     user_id: str,
     project_id: str,
     authorization_port: AuthorizationPort,
@@ -288,14 +280,14 @@ def _execute_authorization_check(
         resource=resource,
         action=Action.VIEW,
     )
-    result = _run_authorization_check(authorization_port, context)
+    result = await _run_authorization_check(authorization_port, context)
 
     if result.allowed:
         return _log_and_create_allowed_state(user_id, project_id, result)
     return _log_and_create_denied_state(user_id, project_id, result)
 
 
-def authorization_node(
+async def authorization_node(
     state: PipelineState,
     *,
     authorization_port: AuthorizationPort | None = None,
@@ -345,7 +337,7 @@ def authorization_node(
 
     # Delegate core logic with exception handling
     try:
-        return _execute_authorization_check(user_id, project_id, authorization_port)
+        return await _execute_authorization_check(user_id, project_id, authorization_port)
     except AuthorizationCheckError as e:
         logger.exception(
             _LogEvent.CHECK_FAILED,

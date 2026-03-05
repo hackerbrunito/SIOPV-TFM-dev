@@ -150,9 +150,9 @@ class TestRunPipeline:
             json.dump(sample_trivy_report, f)
             return Path(f.name)
 
-    def test_run_pipeline_basic(self, trivy_report_file: Path):
+    async def test_run_pipeline_basic(self, trivy_report_file: Path):
         """Test basic pipeline execution."""
-        result = run_pipeline(trivy_report_file)
+        result = await run_pipeline(trivy_report_file)
 
         assert "vulnerabilities" in result
         assert "enrichments" in result
@@ -160,21 +160,21 @@ class TestRunPipeline:
         assert "escalated_cves" in result
         assert "thread_id" in result
 
-    def test_run_pipeline_with_thread_id(self, trivy_report_file: Path):
+    async def test_run_pipeline_with_thread_id(self, trivy_report_file: Path):
         """Test pipeline with custom thread ID."""
-        result = run_pipeline(
+        result = await run_pipeline(
             trivy_report_file,
             thread_id="custom-thread-123",
         )
 
         assert result["thread_id"] == "custom-thread-123"
 
-    def test_run_pipeline_with_checkpoint(self, trivy_report_file: Path):
+    async def test_run_pipeline_with_checkpoint(self, trivy_report_file: Path):
         """Test pipeline with checkpointing enabled."""
         with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
             db_path = f.name
 
-        result = run_pipeline(
+        result = await run_pipeline(
             trivy_report_file,
             checkpoint_db_path=db_path,
         )
@@ -199,7 +199,7 @@ class TestGraphStructure:
         assert "classify" in nodes
         assert "escalate" in nodes
 
-    def test_graph_routing_logic(self):
+    async def test_graph_routing_logic(self):
         """Test graph can be invoked with initial state."""
         graph = create_pipeline_graph(with_checkpointer=False)
 
@@ -207,7 +207,7 @@ class TestGraphStructure:
         state = create_initial_state()
 
         config = {"configurable": {"thread_id": "test-routing"}}
-        result = graph.invoke(state, config)
+        result = await graph.ainvoke(state, config)
 
         # Should complete with errors since no report
         assert "errors" in result

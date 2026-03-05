@@ -89,7 +89,7 @@ def base_state() -> dict[str, object]:
 class TestAuthorizationNode:
     """Tests for authorization_node function."""
 
-    def test_authorization_allowed(
+    async def test_authorization_allowed(
         self,
         mock_authorization_port: MagicMock,
         allowed_result: AuthorizationResult,
@@ -98,7 +98,7 @@ class TestAuthorizationNode:
         """Test that allowed authorization returns correct state."""
         mock_authorization_port.check.return_value = allowed_result
 
-        result = authorization_node(
+        result = await authorization_node(
             base_state,  # type: ignore[arg-type]
             authorization_port=mock_authorization_port,
         )
@@ -111,7 +111,7 @@ class TestAuthorizationNode:
         assert "user_id_hash" in result["authorization_result"]  # Pseudonymized
         assert result["authorization_result"]["project_id"] == "project-456"
 
-    def test_authorization_denied(
+    async def test_authorization_denied(
         self,
         mock_authorization_port: MagicMock,
         denied_result: AuthorizationResult,
@@ -120,7 +120,7 @@ class TestAuthorizationNode:
         """Test that denied authorization returns correct state with error."""
         mock_authorization_port.check.return_value = denied_result
 
-        result = authorization_node(
+        result = await authorization_node(
             base_state,  # type: ignore[arg-type]
             authorization_port=mock_authorization_port,
         )
@@ -134,7 +134,7 @@ class TestAuthorizationNode:
         assert len(result["errors"]) == 1
         assert "insufficient permissions" in result["errors"][0]
 
-    def test_denied_no_user_id_without_system_execution(
+    async def test_denied_no_user_id_without_system_execution(
         self,
         mock_authorization_port: MagicMock,
     ) -> None:
@@ -145,7 +145,7 @@ class TestAuthorizationNode:
             "project_id": "project-123",
         }
 
-        result = authorization_node(
+        result = await authorization_node(
             state,  # type: ignore[arg-type]
             authorization_port=mock_authorization_port,
         )
@@ -157,7 +157,7 @@ class TestAuthorizationNode:
         # Port should not be called
         mock_authorization_port.check.assert_not_called()
 
-    def test_skipped_with_system_execution_flag(
+    async def test_skipped_with_system_execution_flag(
         self,
         mock_authorization_port: MagicMock,
     ) -> None:
@@ -169,7 +169,7 @@ class TestAuthorizationNode:
             "system_execution": True,
         }
 
-        result = authorization_node(
+        result = await authorization_node(
             state,  # type: ignore[arg-type]
             authorization_port=mock_authorization_port,
         )
@@ -180,12 +180,12 @@ class TestAuthorizationNode:
         # Port should not be called
         mock_authorization_port.check.assert_not_called()
 
-    def test_fail_secure_no_port(
+    async def test_fail_secure_no_port(
         self,
         base_state: dict[str, object],
     ) -> None:
         """Test fail-secure denial when no authorization port provided."""
-        result = authorization_node(
+        result = await authorization_node(
             base_state,  # type: ignore[arg-type]
             authorization_port=None,
         )
@@ -195,7 +195,7 @@ class TestAuthorizationNode:
         assert "errors" in result
         assert "fail-secure" in result["errors"][0]
 
-    def test_default_project_id(
+    async def test_default_project_id(
         self,
         mock_authorization_port: MagicMock,
         allowed_result: AuthorizationResult,
@@ -208,7 +208,7 @@ class TestAuthorizationNode:
             "project_id": None,
         }
 
-        result = authorization_node(
+        result = await authorization_node(
             state,  # type: ignore[arg-type]
             authorization_port=mock_authorization_port,
         )
@@ -217,7 +217,7 @@ class TestAuthorizationNode:
         # Verify the check was called (project_id defaulted to "default")
         mock_authorization_port.check.assert_called_once()
 
-    def test_authorization_check_error(
+    async def test_authorization_check_error(
         self,
         mock_authorization_port: MagicMock,
         base_state: dict[str, object],
@@ -231,7 +231,7 @@ class TestAuthorizationNode:
             reason="Connection failed",
         )
 
-        result = authorization_node(
+        result = await authorization_node(
             base_state,  # type: ignore[arg-type]
             authorization_port=mock_authorization_port,
         )
@@ -241,7 +241,7 @@ class TestAuthorizationNode:
         assert "errors" in result
         assert "Authorization check failed" in result["errors"][0]
 
-    def test_generic_exception(
+    async def test_generic_exception(
         self,
         mock_authorization_port: MagicMock,
         base_state: dict[str, object],
@@ -249,7 +249,7 @@ class TestAuthorizationNode:
         """Test handling of generic exceptions."""
         mock_authorization_port.check.side_effect = RuntimeError("Unexpected error")
 
-        result = authorization_node(
+        result = await authorization_node(
             base_state,  # type: ignore[arg-type]
             authorization_port=mock_authorization_port,
         )
