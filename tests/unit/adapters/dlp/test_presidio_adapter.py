@@ -233,6 +233,7 @@ def _build_presidio_adapter(
         mock_anon.return_value = MagicMock()
         return PresidioAdapter(
             api_key=api_key,
+            haiku_model="claude-haiku-4-5-20251001",
             enable_semantic_validation=enable_semantic_validation,
         )
 
@@ -254,7 +255,9 @@ class TestPresidioAdapterInit:
         ):
             mock_ana.return_value = MagicMock()
             mock_anon.return_value = MagicMock()
-            adapter = PresidioAdapter(api_key="", enable_semantic_validation=True)
+            adapter = PresidioAdapter(
+                api_key="", haiku_model="claude-haiku-4-5-20251001", enable_semantic_validation=True
+            )
 
         assert adapter._haiku_validator is None
 

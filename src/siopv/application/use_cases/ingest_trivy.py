@@ -14,7 +14,6 @@ from typing import TYPE_CHECKING
 
 import structlog
 
-from siopv.adapters.external_apis.trivy_parser import TrivyParser
 from siopv.domain.services import (
     deduplicate_vulnerabilities,
     group_by_package,
@@ -22,6 +21,7 @@ from siopv.domain.services import (
 )
 
 if TYPE_CHECKING:
+    from siopv.application.ports.parsing import TrivyParserPort
     from siopv.domain.entities import VulnerabilityRecord
 
 logger = structlog.get_logger(__name__)
@@ -54,9 +54,13 @@ class IngestTrivyReportUseCase:
     It parses, validates, deduplicates, and organizes vulnerability data.
     """
 
-    def __init__(self) -> None:
-        """Initialize the use case with a Trivy parser."""
-        self._parser = TrivyParser()
+    def __init__(self, parser: TrivyParserPort) -> None:
+        """Initialize the use case with a Trivy parser port.
+
+        Args:
+            parser: Implementation of TrivyParserPort to use for parsing.
+        """
+        self._parser = parser
 
     def execute(self, report_path: Path | str) -> IngestionResult:
         """Execute the ingestion pipeline.
@@ -168,16 +172,24 @@ class IngestTrivyReportUseCase:
         return counts
 
 
-def ingest_trivy_report(report_path: Path | str) -> IngestionResult:
+def ingest_trivy_report(
+    report_path: Path | str,
+    parser: TrivyParserPort | None = None,
+) -> IngestionResult:
     """Convenience function to ingest a Trivy report.
 
     Args:
         report_path: Path to Trivy JSON report
+        parser: Optional TrivyParserPort implementation. Defaults to TrivyParser.
 
     Returns:
         IngestionResult with processed records and statistics
     """
-    use_case = IngestTrivyReportUseCase()
+    if parser is None:
+        from siopv.adapters.external_apis.trivy_parser import TrivyParser  # noqa: PLC0415
+
+        parser = TrivyParser()
+    use_case = IngestTrivyReportUseCase(parser=parser)
     return use_case.execute(report_path)
 
 

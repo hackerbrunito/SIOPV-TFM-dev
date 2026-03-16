@@ -1,0 +1,20 @@
+{
+  "agent": "scanner-security-6",
+  "wave": "1.1",
+  "timestamp": "2026-03-16T08:01:00Z",
+  "files_audited": [
+    "src/siopv/application/orchestration/utils.py",
+    "src/siopv/application/ports/authorization.py",
+    "src/siopv/application/ports/dlp.py",
+    "src/siopv/application/ports/enrichment_clients.py",
+    "src/siopv/application/ports/feature_engineering.py"
+  ],
+  "findings": [],
+  "summary": {
+    "total": 0,
+    "critical": 0,
+    "high": 0,
+    "medium": 0,
+    "notes": "All 5 files are either pure computation utilities (utils.py) or abstract port/protocol definitions (authorization.py, dlp.py, enrichment_clients.py, feature_engineering.py). No concrete implementation code, no I/O, no user input handling, no secrets, no deserialization, no SQL, no shell commands. No OWASP Top 10 issues found."
+  }
+}

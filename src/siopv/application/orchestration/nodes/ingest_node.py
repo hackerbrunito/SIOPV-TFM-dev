@@ -18,7 +18,10 @@ if TYPE_CHECKING:
 logger = structlog.get_logger(__name__)
 
 
-def ingest_node(state: PipelineState) -> dict[str, object]:
+def ingest_node(
+    state: PipelineState,
+    use_case: IngestTrivyReportUseCase | None = None,
+) -> dict[str, object]:
     """Execute ingestion phase as a LangGraph node.
 
     This node wraps the IngestTrivyReportUseCase to integrate with
@@ -26,6 +29,8 @@ def ingest_node(state: PipelineState) -> dict[str, object]:
 
     Args:
         state: Current pipeline state with report_path
+        use_case: Optional pre-constructed use case for dependency injection.
+            If None, a default instance is created with TrivyParser.
 
     Returns:
         State updates with vulnerabilities list and processed_count
@@ -46,8 +51,11 @@ def ingest_node(state: PipelineState) -> dict[str, object]:
         }
 
     try:
-        # Execute the Phase 1 use case
-        use_case = IngestTrivyReportUseCase()
+        # Use injected use case or create a default one
+        if use_case is None:
+            from siopv.adapters.external_apis.trivy_parser import TrivyParser  # noqa: PLC0415
+
+            use_case = IngestTrivyReportUseCase(parser=TrivyParser())
         result = use_case.execute(Path(report_path))
 
         logger.info(
@@ -85,7 +93,9 @@ def ingest_node(state: PipelineState) -> dict[str, object]:
 
 
 def ingest_node_from_dict(
-    state: PipelineState, report_data: dict[str, object]
+    state: PipelineState,
+    report_data: dict[str, object],
+    use_case: IngestTrivyReportUseCase | None = None,
 ) -> dict[str, object]:
     """Execute ingestion from a dictionary (for API/testing).
 
@@ -94,6 +104,8 @@ def ingest_node_from_dict(
     Args:
         state: Current pipeline state
         report_data: Trivy report as dictionary
+        use_case: Optional pre-constructed use case for dependency injection.
+            If None, a default instance is created with TrivyParser.
 
     Returns:
         State updates with vulnerabilities list and processed_count
@@ -102,7 +114,10 @@ def ingest_node_from_dict(
     logger.info("ingest_node_from_dict_started", thread_id=state.get("thread_id"))
 
     try:
-        use_case = IngestTrivyReportUseCase()
+        if use_case is None:
+            from siopv.adapters.external_apis.trivy_parser import TrivyParser  # noqa: PLC0415
+
+            use_case = IngestTrivyReportUseCase(parser=TrivyParser())
         result = use_case.execute_from_dict(report_data)
 
         logger.info(

@@ -9,7 +9,7 @@ Tests factory functions for creating authentication components:
 from __future__ import annotations
 
 from collections.abc import Generator
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -49,9 +49,12 @@ def _clear_cache() -> Generator[None, None, None]:
 
 
 @pytest.fixture(autouse=True)
-def _make_settings_hashable(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Make Settings hashable so lru_cache works in tests."""
-    monkeypatch.setattr(Settings, "__hash__", lambda self: id(self))  # noqa: PLW0108, RUF100
+def patch_get_settings(settings: Settings) -> Generator[MagicMock, None, None]:
+    """Patch get_settings in the authentication DI module for all tests."""
+    with patch(
+        "siopv.infrastructure.di.authentication.get_settings", return_value=settings
+    ) as mock:
+        yield mock
 
 
 # === Test create_oidc_adapter ===
@@ -60,16 +63,16 @@ def _make_settings_hashable(monkeypatch: pytest.MonkeyPatch) -> None:
 class TestCreateOIDCAdapter:
     """Tests for the create_oidc_adapter factory function."""
 
-    def test_create_oidc_adapter_success(self, settings: Settings) -> None:
+    def test_create_oidc_adapter_success(self) -> None:
         """Happy path: factory returns a properly initialized KeycloakOIDCAdapter."""
-        result = create_oidc_adapter(settings)
+        result = create_oidc_adapter()
 
         assert isinstance(result, KeycloakOIDCAdapter)
 
-    def test_create_oidc_adapter_logging(self, settings: Settings) -> None:
+    def test_create_oidc_adapter_logging(self) -> None:
         """Factory logs debug and info events with correct structured fields."""
         with patch("siopv.infrastructure.di.authentication.logger") as mock_logger:
-            result = create_oidc_adapter(settings)
+            result = create_oidc_adapter()
 
             mock_logger.debug.assert_called_once_with(
                 "creating_oidc_adapter",
@@ -85,6 +88,12 @@ class TestCreateOIDCAdapter:
 
         assert isinstance(result, KeycloakOIDCAdapter)
 
+    def test_get_settings_called_internally(self, patch_get_settings: MagicMock) -> None:
+        """Test that get_settings() is called internally (no settings parameter)."""
+        create_oidc_adapter()
+
+        patch_get_settings.assert_called()
+
 
 # === Test get_oidc_authentication_port ===
 
@@ -92,16 +101,16 @@ class TestCreateOIDCAdapter:
 class TestGetOIDCAuthenticationPort:
     """Tests for the get_oidc_authentication_port singleton factory."""
 
-    def test_get_oidc_authentication_port_cached(self, settings: Settings) -> None:
-        """Calling twice with the same settings returns the identical object."""
-        first = get_oidc_authentication_port(settings)
-        second = get_oidc_authentication_port(settings)
+    def test_get_oidc_authentication_port_cached(self) -> None:
+        """Calling twice returns the identical object."""
+        first = get_oidc_authentication_port()
+        second = get_oidc_authentication_port()
 
         assert first is second
 
-    def test_get_oidc_authentication_port_returns_adapter(self, settings: Settings) -> None:
+    def test_get_oidc_authentication_port_returns_adapter(self) -> None:
         """Returned object is a KeycloakOIDCAdapter (which implements OIDCAuthenticationPort)."""
-        port = get_oidc_authentication_port(settings)
+        port = get_oidc_authentication_port()
 
         assert isinstance(port, KeycloakOIDCAdapter)
 
@@ -112,16 +121,16 @@ class TestGetOIDCAuthenticationPort:
 class TestCreateOIDCMiddleware:
     """Tests for the create_oidc_middleware factory function."""
 
-    def test_create_oidc_middleware_success(self, settings: Settings) -> None:
+    def test_create_oidc_middleware_success(self) -> None:
         """Happy path: factory returns a properly wired OIDCAuthenticationMiddleware."""
-        result = create_oidc_middleware(settings)
+        result = create_oidc_middleware()
 
         assert isinstance(result, OIDCAuthenticationMiddleware)
 
     def test_create_oidc_middleware_logging(self, settings: Settings) -> None:
         """Factory logs debug and info events during middleware creation."""
         with patch("siopv.infrastructure.di.authentication.logger") as mock_logger:
-            result = create_oidc_middleware(settings)
+            result = create_oidc_middleware()
 
             mock_logger.debug.assert_any_call(
                 "creating_oidc_middleware",

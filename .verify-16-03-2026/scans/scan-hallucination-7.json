@@ -1,0 +1,26 @@
+{
+  "scanner": "scanner-hallucination-7",
+  "domain": "hallucination",
+  "timestamp": "2026-03-16T08:01:00Z",
+  "files_scanned": [
+    "src/siopv/application/ports/ml_classifier.py",
+    "src/siopv/application/ports/oidc_authentication.py",
+    "src/siopv/application/ports/parsing.py",
+    "src/siopv/application/ports/vector_store.py",
+    "src/siopv/application/use_cases/authorization.py"
+  ],
+  "summary": {
+    "total_files": 5,
+    "files_with_findings": 0,
+    "total_findings": 0,
+    "verdict": "PASS"
+  },
+  "analysis_notes": [
+    "ml_classifier.py: Pure ABC port. No external library imports — only domain types under TYPE_CHECKING. Docstrings reference SHAP/LIME/XGBoost/Optuna concepts consistent with Context7 cache. PASS.",
+    "oidc_authentication.py: Pure Protocol port. No external library imports at runtime. Docstrings reference PyJWT patterns (RS256, JWKS via PyJWKClient, algorithms pinning, exp/aud/iss validation) — all consistent with Context7 jwt.md cache. PASS.",
+    "parsing.py: Pure Protocol port. Only stdlib import (pathlib.Path). No external library usage. PASS.",
+    "vector_store.py: Pure ABC port. No external library imports — only domain EnrichmentData under TYPE_CHECKING. ChromaDB patterns (persistent storage, query_similar) are referenced conceptually but not imported. PASS.",
+    "authorization.py: Uses structlog.get_logger(__name__), logger.bind(), logger.info(), logger.warning(), logger.exception() — all match Context7 structlog.md cache exactly. Domain imports from siopv.domain.authorization (no adapter leakage). Port types (AuthorizationPort, AuthorizationStorePort) correctly under TYPE_CHECKING. No direct openfga_sdk imports (proper hexagonal separation). PASS."
+  ],
+  "findings": []
+}

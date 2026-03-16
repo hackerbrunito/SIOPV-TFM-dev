@@ -1,0 +1,68 @@
+[
+  {
+    "file": "src/siopv/adapters/ml/xgboost_classifier.py",
+    "line": 368,
+    "domain": "hallucination",
+    "severity": "HIGH",
+    "library": "xgboost",
+    "pattern_used": "XGBClassifierBase(use_label_encoder=False, ...)",
+    "context7_status": "NOT IN DOCS — removed in XGBoost 2.0+",
+    "correct_pattern": "Remove use_label_encoder=False entirely; parameter was deprecated in XGBoost 1.6 and removed in 2.0+",
+    "fix": "Delete 'use_label_encoder=False,' from line 368"
+  },
+  {
+    "file": "src/siopv/adapters/ml/xgboost_classifier.py",
+    "line": 558,
+    "domain": "hallucination",
+    "severity": "HIGH",
+    "library": "xgboost",
+    "pattern_used": "\"use_label_encoder\": False",
+    "context7_status": "NOT IN DOCS — removed in XGBoost 2.0+",
+    "correct_pattern": "Remove use_label_encoder key from params dict; parameter was deprecated in XGBoost 1.6 and removed in 2.0+",
+    "fix": "Delete '\"use_label_encoder\": False,' from line 558"
+  },
+  {
+    "file": "src/siopv/adapters/ml/shap_explainer.py",
+    "line": 72,
+    "domain": "hallucination",
+    "severity": "INFO",
+    "library": "shap",
+    "pattern_used": "explainer.shap_values(X) — older API",
+    "context7_status": "IN DOCS but marked as older; explainer(X) returning Explanation object is preferred",
+    "correct_pattern": "explanation = explainer(X); values = explanation.values",
+    "fix": "Optional modernization — .shap_values() still works but explainer(X) is the modern API"
+  },
+  {
+    "file": "src/siopv/adapters/external_apis/trivy_parser.py",
+    "line": 0,
+    "domain": "hallucination",
+    "severity": "PASS",
+    "library": "structlog",
+    "pattern_used": "structlog.get_logger(__name__)",
+    "context7_status": "IN DOCS — correct usage",
+    "correct_pattern": "N/A",
+    "fix": "No fix needed"
+  },
+  {
+    "file": "src/siopv/adapters/ml/feature_engineer.py",
+    "line": 0,
+    "domain": "hallucination",
+    "severity": "PASS",
+    "library": "structlog",
+    "pattern_used": "structlog.get_logger(__name__)",
+    "context7_status": "IN DOCS — correct usage",
+    "correct_pattern": "N/A",
+    "fix": "No fix needed"
+  },
+  {
+    "file": "src/siopv/adapters/ml/lime_explainer.py",
+    "line": 0,
+    "domain": "hallucination",
+    "severity": "PASS",
+    "library": "lime",
+    "pattern_used": "LimeTabularExplainer + explain_instance + as_list",
+    "context7_status": "IN DOCS — all patterns verified correct",
+    "correct_pattern": "N/A",
+    "fix": "No fix needed"
+  }
+]

@@ -1,0 +1,15 @@
+$ mypy src/  (after config update, mypy 1.19.1)
+
+src/siopv/adapters/external_apis/tavily_client.py:132: error: Unused "type: ignore" comment  [unused-ignore]
+src/siopv/adapters/external_apis/nvd_client.py:126: error: Unused "type: ignore" comment  [unused-ignore]
+src/siopv/adapters/external_apis/github_advisory_client.py:204: error: Unused "type: ignore" comment  [unused-ignore]
+src/siopv/adapters/external_apis/epss_client.py:111: error: Unused "type: ignore" comment  [unused-ignore]
+src/siopv/adapters/external_apis/epss_client.py:205: error: Unused "type: ignore" comment  [unused-ignore]
+src/siopv/adapters/authorization/openfga_adapter.py:267: error: Unused "type: ignore" comment  [unused-ignore]
+src/siopv/adapters/ml/xgboost_classifier.py:589: error: Unused "type: ignore" comment  [unused-ignore]
+src/siopv/application/orchestration/graph.py:317: error: Unused "type: ignore" comment  [unused-ignore]
+Found 8 errors in 7 files (checked 76 source files)
+
+Result: Same 8 [unused-ignore] errors as before config change.
+No new errors from per-module ignore_missing_imports switch.
+No @retry [untyped-decorator] errors appeared → Scenario A confirmed.

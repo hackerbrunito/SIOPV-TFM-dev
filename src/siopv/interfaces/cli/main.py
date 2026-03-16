@@ -70,6 +70,10 @@ def process_report(
 ) -> None:
     """Process a Trivy vulnerability report through the SIOPV pipeline."""
     from siopv.application.orchestration.graph import run_pipeline  # noqa: PLC0415
+    from siopv.infrastructure.di import (  # noqa: PLC0415
+        get_authorization_port,
+        get_dual_layer_dlp_port,
+    )
 
     log = get_logger(__name__)
     log.info(
@@ -83,12 +87,18 @@ def process_report(
     typer.echo(f"Processing report: {report_path}")
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    authorization_port = get_authorization_port()
+    dlp_port = get_dual_layer_dlp_port()
+
     try:
         result = asyncio.run(
             run_pipeline(
                 report_path=report_path,
                 user_id=user_id,
                 project_id=project_id,
+                authorization_port=authorization_port,
+                dlp_port=dlp_port,
+                # TODO(phase-7): Wire enrichment clients and classifier via DI
             )
         )
     except Exception as exc:

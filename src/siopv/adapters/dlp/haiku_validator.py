@@ -60,13 +60,13 @@ class HaikuSemanticValidatorAdapter:
     def __init__(
         self,
         api_key: str,
-        model: str = "claude-haiku-4-5-20251001",
+        model: str,
     ) -> None:
         """Initialise the adapter.
 
         Args:
             api_key: Anthropic API key.
-            model: Claude model identifier (defaults to Haiku).
+            model: Claude model identifier (e.g. from settings.claude_haiku_model).
         """
         self._client = create_haiku_client(api_key)
         self._model = model

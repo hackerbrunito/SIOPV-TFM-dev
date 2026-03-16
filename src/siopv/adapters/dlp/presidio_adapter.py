@@ -229,7 +229,7 @@ class PresidioAdapter:
     def __init__(
         self,
         api_key: str,
-        haiku_model: str = "claude-haiku-4-5-20251001",
+        haiku_model: str,
         *,
         enable_semantic_validation: bool = True,
     ) -> None:
@@ -237,7 +237,8 @@ class PresidioAdapter:
 
         Args:
             api_key: Anthropic API key for Haiku semantic validation.
-            haiku_model: Claude model ID to use for semantic validation.
+            haiku_model: Claude model ID to use for semantic validation
+                (e.g. from settings.claude_haiku_model).
             enable_semantic_validation: If False, skip Haiku validation step.
         """
         self._analyzer = _build_analyzer()

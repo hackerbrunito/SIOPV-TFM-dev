@@ -1,0 +1,58 @@
+{
+  "agent": "scanner-security-5",
+  "batch": 5,
+  "timestamp": "2026-03-16T08:01:00Z",
+  "files_audited": [
+    "src/siopv/application/orchestration/nodes/dlp_node.py",
+    "src/siopv/application/orchestration/nodes/enrich_node.py",
+    "src/siopv/application/orchestration/nodes/escalate_node.py",
+    "src/siopv/application/orchestration/nodes/ingest_node.py",
+    "src/siopv/application/orchestration/state.py"
+  ],
+  "findings": [
+    {
+      "file": "src/siopv/application/orchestration/nodes/ingest_node.py",
+      "line": 59,
+      "domain": "security",
+      "severity": "MEDIUM",
+      "cwe": "CWE-22",
+      "description": "Path traversal risk: report_path from state is passed to Path() and used to read files. If report_path is user-controlled and unvalidated upstream, an attacker could read arbitrary files (e.g., ../../etc/passwd). Currently mitigated by: (1) authorization node runs first, (2) CLI interface controls path input, (3) use_case.execute validates Trivy JSON structure.",
+      "fix": "Add path validation in ingest_node (e.g., resolve and check against allowed base directory) or ensure CLI/API layer validates paths before they enter state. Current risk is LOW in practice due to existing mitigations."
+    },
+    {
+      "file": "src/siopv/application/orchestration/nodes/enrich_node.py",
+      "line": 90,
+      "domain": "security",
+      "severity": "MEDIUM",
+      "cwe": "CWE-209",
+      "description": "Exception message includes raw error details via f-string interpolation (f\"Enrichment failed: {e}\"). If pipeline errors are surfaced to users (e.g., in Phase 7 Streamlit dashboard or API responses), internal details (stack traces, file paths, connection strings) could leak.",
+      "fix": "Use a generic user-facing message and log the full exception separately. The structlog call on line 91 already logs the details — the error list in state should contain sanitized messages only."
+    },
+    {
+      "file": "src/siopv/application/orchestration/nodes/escalate_node.py",
+      "line": 87,
+      "domain": "security",
+      "severity": "MEDIUM",
+      "cwe": "CWE-209",
+      "description": "Same pattern as enrich_node: f\"Escalation failed: {e}\" stores raw exception in state errors list. Could leak internal details if displayed to users.",
+      "fix": "Replace with generic message in state; detailed error already logged via structlog."
+    },
+    {
+      "file": "src/siopv/application/orchestration/nodes/ingest_node.py",
+      "line": 84,
+      "domain": "security",
+      "severity": "MEDIUM",
+      "cwe": "CWE-209",
+      "description": "Same pattern: f\"Ingestion failed: {e}\" stores raw exception in state errors list.",
+      "fix": "Replace with generic message in state; detailed error already logged via structlog."
+    }
+  ],
+  "summary": {
+    "critical": 0,
+    "high": 0,
+    "medium": 4,
+    "total": 4,
+    "verdict": "PASS",
+    "notes": "No CRITICAL or HIGH findings. 4 MEDIUM findings: 1 path traversal (mitigated by upstream controls) and 3 information disclosure via error messages in state. All are defense-in-depth recommendations, not exploitable vulnerabilities in current architecture."
+  }
+}

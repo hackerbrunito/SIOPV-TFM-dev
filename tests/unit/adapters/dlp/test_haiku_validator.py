@@ -54,7 +54,9 @@ def _make_pii_detection() -> PIIDetection:
 class TestHaikuValidatorInit:
     def test_init_creates_client_with_api_key(self) -> None:
         with patch("anthropic.Anthropic") as mock_anthropic:
-            _adapter = HaikuSemanticValidatorAdapter(api_key="my-key")
+            _adapter = HaikuSemanticValidatorAdapter(
+                api_key="my-key", model="claude-haiku-4-5-20251001"
+            )
             mock_anthropic.assert_called_once_with(api_key="my-key")
 
     def test_init_stores_custom_model(self) -> None:
@@ -62,9 +64,12 @@ class TestHaikuValidatorInit:
             adapter = HaikuSemanticValidatorAdapter(api_key="key", model="custom-model")
         assert adapter._model == "custom-model"
 
-    def test_init_default_model(self) -> None:
+    def test_init_requires_model(self) -> None:
+        """model parameter is required — no hardcoded default."""
         with patch("anthropic.Anthropic"):
-            adapter = HaikuSemanticValidatorAdapter(api_key="key")
+            adapter = HaikuSemanticValidatorAdapter(
+                api_key="key", model="claude-haiku-4-5-20251001"
+            )
         assert adapter._model == "claude-haiku-4-5-20251001"
 
 

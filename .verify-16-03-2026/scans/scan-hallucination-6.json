@@ -1,0 +1,21 @@
+{
+  "scanner": "scanner-hallucination-6",
+  "domain": "hallucination",
+  "timestamp": "2026-03-16T08:01:00Z",
+  "files_scanned": [
+    "src/siopv/application/orchestration/utils.py",
+    "src/siopv/application/ports/authorization.py",
+    "src/siopv/application/ports/dlp.py",
+    "src/siopv/application/ports/enrichment_clients.py",
+    "src/siopv/application/ports/feature_engineering.py"
+  ],
+  "findings": [],
+  "summary": {
+    "total_findings": 0,
+    "high": 0,
+    "medium": 0,
+    "low": 0,
+    "files_with_issues": 0,
+    "notes": "4 of 5 files are pure port interfaces (Protocol/ABC) with zero external library imports — only stdlib typing. utils.py uses structlog.get_logger(__name__) and logger.debug() which are correct per Context7 cache (structlog 25.5.0). No hallucinated APIs, deprecated patterns, or wrong signatures found."
+  }
+}

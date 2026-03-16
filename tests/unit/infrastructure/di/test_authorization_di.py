@@ -48,161 +48,139 @@ def mock_settings() -> MagicMock:
     return settings
 
 
+@pytest.fixture(autouse=True)
+def clear_authorization_caches() -> None:
+    """Clear all authorization DI caches before each test to ensure isolation."""
+    create_authorization_adapter.cache_clear()
+    get_authorization_port.cache_clear()
+    get_authorization_store_port.cache_clear()
+    get_authorization_model_port.cache_clear()
+
+
+@pytest.fixture(autouse=True)
+def patch_get_settings(mock_settings: MagicMock) -> MagicMock:
+    """Patch get_settings in the authorization DI module for all tests."""
+    with patch(
+        "siopv.infrastructure.di.authorization.get_settings", return_value=mock_settings
+    ) as mock:
+        yield mock
+
+
 class TestCreateAuthorizationAdapter:
     """Tests for create_authorization_adapter factory function."""
 
-    def test_creates_openfga_adapter_instance(self, mock_settings: MagicMock) -> None:
+    def test_creates_openfga_adapter_instance(self) -> None:
         """Test that factory creates OpenFGAAdapter instance."""
-        adapter = create_authorization_adapter(mock_settings)
+        adapter = create_authorization_adapter()
 
         assert adapter is not None
         assert isinstance(adapter, OpenFGAAdapter)
 
     def test_adapter_receives_settings(self, mock_settings: MagicMock) -> None:
-        """Test that adapter is initialized with provided settings."""
-        adapter = create_authorization_adapter(mock_settings)
+        """Test that adapter is initialized with settings from get_settings()."""
+        adapter = create_authorization_adapter()
 
-        # Verify adapter has the correct settings
         assert adapter._api_url == mock_settings.openfga_api_url
         assert adapter._store_id == mock_settings.openfga_store_id
 
-    def test_adapter_circuit_breaker_configured(self, mock_settings: MagicMock) -> None:
+    def test_adapter_circuit_breaker_configured(self) -> None:
         """Test that adapter's circuit breaker is configured from settings."""
-        adapter = create_authorization_adapter(mock_settings)
+        adapter = create_authorization_adapter()
 
         assert adapter._circuit_breaker is not None
         assert adapter._circuit_breaker.failure_threshold == 5
         assert adapter._circuit_breaker.recovery_timeout == timedelta(seconds=60)
 
-    def test_adapter_has_action_mappings(self, mock_settings: MagicMock) -> None:
+    def test_adapter_has_action_mappings(self) -> None:
         """Test that adapter has default action mappings initialized."""
-        adapter = create_authorization_adapter(mock_settings)
+        adapter = create_authorization_adapter()
 
         assert adapter._action_mappings is not None
         assert len(adapter._action_mappings) > 0
 
-    def test_multiple_calls_create_separate_instances(self, mock_settings: MagicMock) -> None:
-        """Test that each call creates a new adapter instance."""
-        adapter1 = create_authorization_adapter(mock_settings)
-        adapter2 = create_authorization_adapter(mock_settings)
+    def test_multiple_calls_return_same_cached_instance(self) -> None:
+        """Test that lru_cache returns the same singleton adapter."""
+        adapter1 = create_authorization_adapter()
+        adapter2 = create_authorization_adapter()
 
-        # Each call should create a new instance
-        assert adapter1 is not adapter2
+        assert adapter1 is adapter2
 
-    def test_adapter_not_initialized_after_creation(self, mock_settings: MagicMock) -> None:
+    def test_adapter_not_initialized_after_creation(self) -> None:
         """Test that adapter is not initialized (client is None) after creation."""
-        adapter = create_authorization_adapter(mock_settings)
+        adapter = create_authorization_adapter()
 
-        # Adapter should be created but not initialized
         assert adapter._owned_client is None
 
-    def test_logging_on_adapter_creation(self, mock_settings: MagicMock) -> None:
+    def test_logging_on_adapter_creation(self) -> None:
         """Test that adapter creation logs appropriate messages."""
         with patch("siopv.infrastructure.di.authorization.logger") as mock_logger:
-            adapter = create_authorization_adapter(mock_settings)
+            adapter = create_authorization_adapter()
 
-            # Should log debug and info messages
             assert mock_logger.debug.called or mock_logger.info.called
             assert adapter is not None
+
+    def test_get_settings_called_internally(self, patch_get_settings: MagicMock) -> None:
+        """Test that get_settings() is called internally (no settings parameter)."""
+        create_authorization_adapter()
+
+        patch_get_settings.assert_called_once()
 
 
 class TestGetAuthorizationPort:
     """Tests for get_authorization_port factory function."""
 
-    def test_returns_authorization_port(self, mock_settings: MagicMock) -> None:
+    def test_returns_authorization_port(self) -> None:
         """Test that function returns AuthorizationPort implementation."""
-        port = get_authorization_port(mock_settings)
+        port = get_authorization_port()
 
         assert port is not None
         assert isinstance(port, AuthorizationPort)
 
-    def test_returns_openfga_adapter(self, mock_settings: MagicMock) -> None:
+    def test_returns_openfga_adapter(self) -> None:
         """Test that returned port is actually an OpenFGAAdapter."""
-        port = get_authorization_port(mock_settings)
+        port = get_authorization_port()
 
         assert isinstance(port, OpenFGAAdapter)
 
-    def test_port_implements_interface(self, mock_settings: MagicMock) -> None:
+    def test_port_implements_interface(self) -> None:
         """Test that returned port implements AuthorizationPort interface."""
-        port = get_authorization_port(mock_settings)
+        port = get_authorization_port()
 
-        # Check that port has all required methods
         assert hasattr(port, "check")
         assert hasattr(port, "batch_check")
         assert hasattr(port, "check_relation")
         assert hasattr(port, "list_user_relations")
 
-    def test_cache_returns_same_instance(self, mock_settings: MagicMock) -> None:
-        """Test that lru_cache returns the same instance for same settings."""
-        # Clear cache first
+    def test_cache_returns_same_instance(self) -> None:
+        """Test that lru_cache returns the same instance."""
         get_authorization_port.cache_clear()
 
-        port1 = get_authorization_port(mock_settings)
-        port2 = get_authorization_port(mock_settings)
+        port1 = get_authorization_port()
+        port2 = get_authorization_port()
 
-        # Same settings should return cached instance
         assert port1 is port2
-
-    def test_different_settings_create_different_instances(self) -> None:
-        """Test that different settings create different port instances."""
-        # Clear cache first
-        get_authorization_port.cache_clear()
-
-        settings1 = MagicMock()
-        settings1.openfga_api_url = "http://localhost:8080"
-        settings1.openfga_store_id = "store-1"
-        settings1.openfga_api_token = None
-        settings1.openfga_authorization_model_id = None
-        settings1.openfga_auth_method = "none"
-        settings1.openfga_client_id = None
-        settings1.openfga_client_secret = None
-        settings1.openfga_api_audience = None
-        settings1.openfga_api_token_issuer = None
-        settings1.circuit_breaker_failure_threshold = 5
-        settings1.circuit_breaker_recovery_timeout = 60
-
-        settings2 = MagicMock()
-        settings2.openfga_api_url = "http://localhost:9090"
-        settings2.openfga_store_id = "store-2"
-        settings2.openfga_api_token = None
-        settings2.openfga_authorization_model_id = None
-        settings2.openfga_auth_method = "none"
-        settings2.openfga_client_id = None
-        settings2.openfga_client_secret = None
-        settings2.openfga_api_audience = None
-        settings2.openfga_api_token_issuer = None
-        settings2.circuit_breaker_failure_threshold = 5
-        settings2.circuit_breaker_recovery_timeout = 60
-
-        port1 = get_authorization_port(settings1)
-        port2 = get_authorization_port(settings2)
-
-        # Different settings should create different instances
-        assert port1 is not port2
-        assert port1._api_url != port2._api_url
 
 
 class TestGetAuthorizationStorePort:
     """Tests for get_authorization_store_port factory function."""
 
-    def test_returns_authorization_store_port(self, mock_settings: MagicMock) -> None:
+    def test_returns_authorization_store_port(self) -> None:
         """Test that function returns AuthorizationStorePort implementation."""
-        port = get_authorization_store_port(mock_settings)
+        port = get_authorization_store_port()
 
         assert port is not None
         assert isinstance(port, AuthorizationStorePort)
 
-    def test_returns_openfga_adapter(self, mock_settings: MagicMock) -> None:
+    def test_returns_openfga_adapter(self) -> None:
         """Test that returned port is actually an OpenFGAAdapter."""
-        port = get_authorization_store_port(mock_settings)
+        port = get_authorization_store_port()
 
         assert isinstance(port, OpenFGAAdapter)
 
-    def test_port_implements_interface(self, mock_settings: MagicMock) -> None:
+    def test_port_implements_interface(self) -> None:
         """Test that returned port implements AuthorizationStorePort interface."""
-        port = get_authorization_store_port(mock_settings)
+        port = get_authorization_store_port()
 
-        # Check that port has all required methods
         assert hasattr(port, "write_tuple")
         assert hasattr(port, "write_tuples")
         assert hasattr(port, "delete_tuple")
@@ -212,167 +190,79 @@ class TestGetAuthorizationStorePort:
         assert hasattr(port, "read_tuples_for_user")
         assert hasattr(port, "tuple_exists")
 
-    def test_cache_returns_same_instance(self, mock_settings: MagicMock) -> None:
-        """Test that lru_cache returns the same instance for same settings."""
-        # Clear cache first
+    def test_cache_returns_same_instance(self) -> None:
+        """Test that lru_cache returns the same instance."""
         get_authorization_store_port.cache_clear()
 
-        port1 = get_authorization_store_port(mock_settings)
-        port2 = get_authorization_store_port(mock_settings)
+        port1 = get_authorization_store_port()
+        port2 = get_authorization_store_port()
 
-        # Same settings should return cached instance
         assert port1 is port2
-
-    def test_different_settings_create_different_instances(self) -> None:
-        """Test that different settings create different port instances."""
-        # Clear cache first
-        get_authorization_store_port.cache_clear()
-
-        settings1 = MagicMock()
-        settings1.openfga_api_url = "http://localhost:8080"
-        settings1.openfga_store_id = "store-1"
-        settings1.openfga_api_token = None
-        settings1.openfga_authorization_model_id = None
-        settings1.openfga_auth_method = "none"
-        settings1.openfga_client_id = None
-        settings1.openfga_client_secret = None
-        settings1.openfga_api_audience = None
-        settings1.openfga_api_token_issuer = None
-        settings1.circuit_breaker_failure_threshold = 5
-        settings1.circuit_breaker_recovery_timeout = 60
-
-        settings2 = MagicMock()
-        settings2.openfga_api_url = "http://localhost:9090"
-        settings2.openfga_store_id = "store-2"
-        settings2.openfga_api_token = None
-        settings2.openfga_authorization_model_id = None
-        settings2.openfga_auth_method = "none"
-        settings2.openfga_client_id = None
-        settings2.openfga_client_secret = None
-        settings2.openfga_api_audience = None
-        settings2.openfga_api_token_issuer = None
-        settings2.circuit_breaker_failure_threshold = 5
-        settings2.circuit_breaker_recovery_timeout = 60
-
-        port1 = get_authorization_store_port(settings1)
-        port2 = get_authorization_store_port(settings2)
-
-        # Different settings should create different instances
-        assert port1 is not port2
 
 
 class TestGetAuthorizationModelPort:
     """Tests for get_authorization_model_port factory function."""
 
-    def test_returns_authorization_model_port(self, mock_settings: MagicMock) -> None:
+    def test_returns_authorization_model_port(self) -> None:
         """Test that function returns AuthorizationModelPort implementation."""
-        port = get_authorization_model_port(mock_settings)
+        port = get_authorization_model_port()
 
         assert port is not None
         assert isinstance(port, AuthorizationModelPort)
 
-    def test_returns_openfga_adapter(self, mock_settings: MagicMock) -> None:
+    def test_returns_openfga_adapter(self) -> None:
         """Test that returned port is actually an OpenFGAAdapter."""
-        port = get_authorization_model_port(mock_settings)
+        port = get_authorization_model_port()
 
         assert isinstance(port, OpenFGAAdapter)
 
-    def test_port_implements_interface(self, mock_settings: MagicMock) -> None:
+    def test_port_implements_interface(self) -> None:
         """Test that returned port implements AuthorizationModelPort interface."""
-        port = get_authorization_model_port(mock_settings)
+        port = get_authorization_model_port()
 
-        # Check that port has all required methods
         assert hasattr(port, "get_model_id")
         assert hasattr(port, "validate_model")
         assert hasattr(port, "health_check")
 
-    def test_cache_returns_same_instance(self, mock_settings: MagicMock) -> None:
-        """Test that lru_cache returns the same instance for same settings."""
-        # Clear cache first
+    def test_cache_returns_same_instance(self) -> None:
+        """Test that lru_cache returns the same instance."""
         get_authorization_model_port.cache_clear()
 
-        port1 = get_authorization_model_port(mock_settings)
-        port2 = get_authorization_model_port(mock_settings)
+        port1 = get_authorization_model_port()
+        port2 = get_authorization_model_port()
 
-        # Same settings should return cached instance
         assert port1 is port2
-
-    def test_different_settings_create_different_instances(self) -> None:
-        """Test that different settings create different port instances."""
-        # Clear cache first
-        get_authorization_model_port.cache_clear()
-
-        settings1 = MagicMock()
-        settings1.openfga_api_url = "http://localhost:8080"
-        settings1.openfga_store_id = "store-1"
-        settings1.openfga_api_token = None
-        settings1.openfga_authorization_model_id = None
-        settings1.openfga_auth_method = "none"
-        settings1.openfga_client_id = None
-        settings1.openfga_client_secret = None
-        settings1.openfga_api_audience = None
-        settings1.openfga_api_token_issuer = None
-        settings1.circuit_breaker_failure_threshold = 5
-        settings1.circuit_breaker_recovery_timeout = 60
-
-        settings2 = MagicMock()
-        settings2.openfga_api_url = "http://localhost:9090"
-        settings2.openfga_store_id = "store-2"
-        settings2.openfga_api_token = None
-        settings2.openfga_authorization_model_id = None
-        settings2.openfga_auth_method = "none"
-        settings2.openfga_client_id = None
-        settings2.openfga_client_secret = None
-        settings2.openfga_api_audience = None
-        settings2.openfga_api_token_issuer = None
-        settings2.circuit_breaker_failure_threshold = 5
-        settings2.circuit_breaker_recovery_timeout = 60
-
-        port1 = get_authorization_model_port(settings1)
-        port2 = get_authorization_model_port(settings2)
-
-        # Different settings should create different instances
-        assert port1 is not port2
 
 
 class TestPortsReturnSameAdapter:
-    """Tests that all port factories return the same adapter instance."""
+    """Tests that all port factories return the same underlying adapter instance."""
 
-    def test_all_ports_from_same_settings_return_different_instances(
-        self, mock_settings: MagicMock
-    ) -> None:
-        """Test that each factory function creates its own adapter instance.
+    def test_all_ports_return_same_instance(self) -> None:
+        """Test that all port factory functions share the same underlying adapter.
 
-        Note: lru_cache is per-function, so each function has its own cached
-        instance. This is by design - each port function caches independently.
+        Because create_authorization_adapter is decorated with @lru_cache(maxsize=1),
+        all three port getter functions call it and receive the same singleton
+        OpenFGAAdapter, eliminating the 3-instance duplication (Hex violation #5).
         """
-        # Clear all caches
-        get_authorization_port.cache_clear()
-        get_authorization_store_port.cache_clear()
-        get_authorization_model_port.cache_clear()
+        port_auth = get_authorization_port()
+        port_store = get_authorization_store_port()
+        port_model = get_authorization_model_port()
 
-        port_auth = get_authorization_port(mock_settings)
-        port_store = get_authorization_store_port(mock_settings)
-        port_model = get_authorization_model_port(mock_settings)
-
-        # Each getter function has its own lru_cache, so instances are different
-        # This is by design - each function maintains its own singleton
+        assert port_auth is port_store
+        assert port_store is port_model
         assert isinstance(port_auth, OpenFGAAdapter)
         assert isinstance(port_store, OpenFGAAdapter)
         assert isinstance(port_model, OpenFGAAdapter)
 
-    def test_repeated_calls_to_same_function_return_cached_instance(
-        self, mock_settings: MagicMock
-    ) -> None:
+    def test_repeated_calls_return_cached_instance(self) -> None:
         """Test that repeated calls to the same function return cached instance."""
-        # Clear all caches
         get_authorization_port.cache_clear()
         get_authorization_store_port.cache_clear()
         get_authorization_model_port.cache_clear()
 
-        port1 = get_authorization_port(mock_settings)
-        port2 = get_authorization_port(mock_settings)
-        port3 = get_authorization_port(mock_settings)
+        port1 = get_authorization_port()
+        port2 = get_authorization_port()
+        port3 = get_authorization_port()
 
         assert port1 is port2
         assert port2 is port3
@@ -381,37 +271,35 @@ class TestPortsReturnSameAdapter:
 class TestDIIntegration:
     """Integration tests for the authorization DI container."""
 
-    def test_all_factories_work_with_same_settings(self, mock_settings: MagicMock) -> None:
-        """Test that all DI functions work correctly with the same settings."""
-        # Clear all caches
+    def test_all_factories_work_together(self) -> None:
+        """Test that all DI functions work correctly together."""
         get_authorization_port.cache_clear()
         get_authorization_store_port.cache_clear()
         get_authorization_model_port.cache_clear()
 
-        adapter = create_authorization_adapter(mock_settings)
-        port_auth = get_authorization_port(mock_settings)
-        port_store = get_authorization_store_port(mock_settings)
-        port_model = get_authorization_model_port(mock_settings)
+        adapter = create_authorization_adapter()
+        port_auth = get_authorization_port()
+        port_store = get_authorization_store_port()
+        port_model = get_authorization_model_port()
 
-        # All should be OpenFGAAdapter instances
         assert isinstance(adapter, OpenFGAAdapter)
         assert isinstance(port_auth, OpenFGAAdapter)
         assert isinstance(port_store, OpenFGAAdapter)
         assert isinstance(port_model, OpenFGAAdapter)
 
-        # All should implement required interfaces
         assert isinstance(port_auth, AuthorizationPort)
         assert isinstance(port_store, AuthorizationStorePort)
         assert isinstance(port_model, AuthorizationModelPort)
 
-    def test_settings_required_fields(self) -> None:
-        """Test that proper settings are required for adapter creation."""
-        incomplete_settings = MagicMock()
-        incomplete_settings.openfga_api_url = None
-        incomplete_settings.openfga_store_id = None
-        incomplete_settings.circuit_breaker_failure_threshold = 5
-        incomplete_settings.circuit_breaker_recovery_timeout = 60
+    def test_adapter_creation_with_none_settings_fields(self) -> None:
+        """Test that adapter creation succeeds even with None URL/store (init will fail later)."""
+        with patch("siopv.infrastructure.di.authorization.get_settings") as mock_gs:
+            incomplete = MagicMock()
+            incomplete.openfga_api_url = None
+            incomplete.openfga_store_id = None
+            incomplete.circuit_breaker_failure_threshold = 5
+            incomplete.circuit_breaker_recovery_timeout = 60
+            mock_gs.return_value = incomplete
 
-        # Adapter creation succeeds, but initialization will fail
-        adapter = create_authorization_adapter(incomplete_settings)
-        assert isinstance(adapter, OpenFGAAdapter)
+            adapter = create_authorization_adapter()
+            assert isinstance(adapter, OpenFGAAdapter)

@@ -1,0 +1,67 @@
+{
+  "scanner": "scanner-security-1",
+  "wave": "1.1",
+  "timestamp": "2026-03-16T08:05:00Z",
+  "files_audited": [
+    "src/siopv/adapters/authentication/keycloak_oidc_adapter.py",
+    "src/siopv/adapters/authorization/openfga_adapter.py",
+    "src/siopv/adapters/dlp/_haiku_utils.py",
+    "src/siopv/adapters/dlp/dual_layer_adapter.py",
+    "src/siopv/adapters/dlp/haiku_validator.py"
+  ],
+  "summary": {
+    "total_findings": 3,
+    "critical": 0,
+    "high": 0,
+    "medium": 3,
+    "low": 0,
+    "pass": true
+  },
+  "findings": [
+    {
+      "file": "src/siopv/adapters/authorization/openfga_adapter.py",
+      "line": 297,
+      "domain": "security",
+      "severity": "MEDIUM",
+      "cwe": "CWE-755",
+      "description": "Overly broad retry scope: @retry(retry=retry_if_exception_type(Exception)) retries on ALL exceptions including non-transient errors (e.g., 400 Bad Request, validation errors). This can mask real errors, waste resources on unrecoverable failures, and delay error propagation.",
+      "fix": "Narrow retry_if_exception_type to transient exceptions only, e.g. retry_if_exception_type((httpx.TimeoutException, httpx.ConnectError, ConnectionError)) or use openfga_sdk-specific retry-eligible exceptions (429/5xx). Non-transient errors (FgaValidationException, 400/403) should fail immediately."
+    },
+    {
+      "file": "src/siopv/adapters/dlp/dual_layer_adapter.py",
+      "line": 104,
+      "domain": "security",
+      "severity": "MEDIUM",
+      "cwe": "CWE-74",
+      "description": "Prompt injection risk: user-controlled vulnerability description text is interpolated directly into the Haiku LLM prompt via _HAIKU_USER_PROMPT.format(text=text). An adversarial input could manipulate the model into reporting contains_sensitive=false when PII is actually present, bypassing the semantic DLP layer. Mitigated by: (1) Presidio runs first as primary defense, (2) Haiku is only invoked when Presidio finds 0 entities, (3) fail-open design limits blast radius.",
+      "fix": "Consider adding input delimiters (e.g., XML tags <user_text>...</user_text>) around the injected text and instructing the model to treat everything inside as data, not instructions. This reduces (but does not eliminate) prompt injection success rates. Full mitigation requires treating LLM output as untrusted and validating the JSON schema strictly."
+    },
+    {
+      "file": "src/siopv/adapters/dlp/haiku_validator.py",
+      "line": 110,
+      "domain": "security",
+      "severity": "MEDIUM",
+      "cwe": "CWE-74",
+      "description": "Prompt injection risk: same pattern as dual_layer_adapter.py — user-controlled text is interpolated into _VALIDATION_PROMPT.format(text=text_to_validate). Adversarial input could cause Haiku to return 'SAFE' for text containing PII. Mitigated by fail-open design (Presidio is primary layer).",
+      "fix": "Same as dual_layer_adapter.py: wrap user text in delimiters, add prompt hardening instructions. The .upper() == 'SAFE' check is a good strictness measure but insufficient against sophisticated prompt injection."
+    }
+  ],
+  "positive_observations": [
+    "keycloak_oidc_adapter.py: RS256 algorithm pinning prevents algorithm confusion attacks (CWE-327). jwt.decode() uses explicit algorithms=['RS256'], audience, issuer, and leeway. No hardcoded credentials. Proper JWKS caching with TTL. Domain exception mapping is clean.",
+    "openfga_adapter.py: No hardcoded credentials — reads from Settings with SecretStr.get_secret_value(). Circuit breaker for fault tolerance. Batch size validation prevents unbounded requests. Proper error propagation with domain exception mapping.",
+    "_haiku_utils.py: Clean utility module. API key passed as parameter, not hardcoded. No security issues.",
+    "dual_layer_adapter.py: API key resolved from parameter or env var, never hardcoded. Fail-open design is appropriate (Presidio is primary). JSON parsing via json.loads is safe (no pickle/yaml deserialization). Text truncation limits cost exposure.",
+    "haiku_validator.py: Fail-open design documented and intentional. max_tokens=10 constrains response size. No hardcoded credentials."
+  ],
+  "checks_performed": [
+    "CWE-798: Hardcoded credentials — CLEAN (all 5 files)",
+    "CWE-89: SQL injection — N/A (no SQL in these files)",
+    "CWE-78: Command injection — CLEAN (no shell/subprocess calls)",
+    "CWE-79: XSS — N/A (no HTML rendering)",
+    "CWE-502: Insecure deserialization — CLEAN (only json.loads used)",
+    "CWE-327: Cryptographic weaknesses — CLEAN (RS256 pinned, no weak algorithms)",
+    "CWE-74: Injection (prompt injection) — 2 MEDIUM findings",
+    "CWE-755: Improper exception handling — 1 MEDIUM finding",
+    "Auth bypass — CLEAN (proper token validation chain, circuit breaker fail-closed)"
+  ]
+}

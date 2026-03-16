@@ -20,7 +20,7 @@ def configure_logging(
         level: Log level (DEBUG, INFO, WARNING, ERROR).
         json_format: If True, output JSON. If False, colored console.
     """
-    # Shared processors
+    # Shared processors (no ExceptionRenderer here — ConsoleRenderer handles it natively)
     shared_processors: list[structlog.typing.Processor] = [
         structlog.stdlib.filter_by_level,
         structlog.stdlib.add_logger_name,
@@ -28,7 +28,6 @@ def configure_logging(
         structlog.stdlib.PositionalArgumentsFormatter(),
         structlog.processors.TimeStamper(fmt="iso"),
         structlog.processors.StackInfoRenderer(),
-        structlog.processors.format_exc_info,
         structlog.processors.UnicodeDecoder(),
         structlog.processors.CallsiteParameterAdder(
             {
@@ -40,11 +39,20 @@ def configure_logging(
     ]
 
     if json_format:
-        # Production: JSON output
+        # Production: ExceptionRenderer converts exc_info to string before JSONRenderer
         renderer: structlog.typing.Processor = structlog.processors.JSONRenderer()
+        formatter_processors: list[structlog.typing.Processor] = [
+            structlog.stdlib.ProcessorFormatter.remove_processors_meta,
+            structlog.processors.ExceptionRenderer(),
+            renderer,
+        ]
     else:
-        # Development: Colored console output
+        # Development: ConsoleRenderer handles exc_info natively (ExceptionRenderer not needed)
         renderer = structlog.dev.ConsoleRenderer(colors=True)
+        formatter_processors = [
+            structlog.stdlib.ProcessorFormatter.remove_processors_meta,
+            renderer,
+        ]
 
     structlog.configure(
         processors=[
@@ -59,10 +67,7 @@ def configure_logging(
     # Configure stdlib logging
     formatter = structlog.stdlib.ProcessorFormatter(
         foreign_pre_chain=shared_processors,
-        processors=[
-            structlog.stdlib.ProcessorFormatter.remove_processors_meta,
-            renderer,
-        ],
+        processors=formatter_processors,
     )
 
     handler = logging.StreamHandler(sys.stdout)

@@ -1,0 +1,22 @@
+[
+  {
+    "file": "src/siopv/application/ports/ml_classifier.py",
+    "line": 157,
+    "domain": "bpe",
+    "severity": "LOW",
+    "pattern": "pathlib-not-os-path",
+    "current": "path: str",
+    "expected": "path: Path (from pathlib)",
+    "fix": "Change parameter type from str to pathlib.Path in save_model()"
+  },
+  {
+    "file": "src/siopv/application/ports/ml_classifier.py",
+    "line": 166,
+    "domain": "bpe",
+    "severity": "LOW",
+    "pattern": "pathlib-not-os-path",
+    "current": "path: str",
+    "expected": "path: Path (from pathlib)",
+    "fix": "Change parameter type from str to pathlib.Path in load_model()"
+  }
+]

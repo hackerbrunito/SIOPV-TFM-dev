@@ -31,6 +31,7 @@ from siopv.adapters.dlp._haiku_utils import (
     truncate_for_haiku,
 )
 from siopv.adapters.dlp.presidio_adapter import PresidioAdapter
+from siopv.application.ports.dlp import DLPPort
 from siopv.domain.privacy.entities import DLPResult, SanitizationContext
 
 logger = structlog.get_logger(__name__)
@@ -76,13 +77,13 @@ class _HaikuDLPAdapter:
     def __init__(
         self,
         api_key: str,
-        model: str = "claude-haiku-4-5-20251001",
+        model: str,
     ) -> None:
         """Initialize with Anthropic API credentials.
 
         Args:
             api_key: Anthropic API key.
-            model: Claude model identifier (defaults to Haiku).
+            model: Claude model identifier (e.g. from settings.claude_haiku_model).
         """
 
         self._client = create_haiku_client(api_key)
@@ -201,7 +202,7 @@ class _HaikuDLPAdapter:
             return DLPResult.safe_text(text)
 
 
-class DualLayerDLPAdapter:
+class DualLayerDLPAdapter(DLPPort):
     """Dual-layer DLP combining Presidio rule-based and Haiku semantic detection.
 
     Implements DLPPort via structural subtyping (Protocol).
@@ -278,7 +279,8 @@ class DualLayerDLPAdapter:
 
 def create_dual_layer_adapter(
     api_key: str | None = None,
-    haiku_model: str = "claude-haiku-4-5-20251001",
+    *,
+    haiku_model: str,
 ) -> DualLayerDLPAdapter:
     """Factory function for a fully configured DualLayerDLPAdapter.
 

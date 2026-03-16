@@ -293,7 +293,9 @@ class TestCreateDualLayerAdapter:
             patch("anthropic.Anthropic"),
         ):
             mock_presidio_cls.return_value = MagicMock()
-            adapter = create_dual_layer_adapter(api_key="test-key")
+            adapter = create_dual_layer_adapter(
+                api_key="test-key", haiku_model="claude-haiku-4-5-20251001"
+            )
 
         assert isinstance(adapter, DualLayerDLPAdapter)
 
@@ -305,6 +307,6 @@ class TestCreateDualLayerAdapter:
         ):
             mock_presidio_cls.return_value = MagicMock()
             mock_anthropic.return_value = MagicMock()
-            create_dual_layer_adapter()  # no api_key param
+            create_dual_layer_adapter(haiku_model="claude-haiku-4-5-20251001")  # no api_key param
 
         mock_anthropic.assert_called_once_with(api_key="env-key-123")

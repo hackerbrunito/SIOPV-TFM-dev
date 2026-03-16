@@ -90,3 +90,11 @@ claude-verification-reports/
 # Agent reports and backups
 .ignorar/
 .env.bckp
+
+# Claude Code machine-local files (never commit these)
+.claude/memory/
+.claude/agent-memory/
+.claude/agent-memory-local/
+.claude/CLAUDE.local.md
+.claude/settings.local.json
+.claude/research-cache/

@@ -1,0 +1,93 @@
+{
+  "agent": "scanner-hallucination-2",
+  "wave": "1.1",
+  "timestamp": "2026-03-16T08:02:00Z",
+  "status": "PASS",
+  "files_audited": [
+    "src/siopv/adapters/dlp/presidio_adapter.py",
+    "src/siopv/adapters/external_apis/epss_client.py",
+    "src/siopv/adapters/external_apis/github_advisory_client.py",
+    "src/siopv/adapters/external_apis/nvd_client.py",
+    "src/siopv/adapters/external_apis/tavily_client.py"
+  ],
+  "libraries_verified": {
+    "httpx": {
+      "cache_available": true,
+      "files_using": [
+        "epss_client.py",
+        "github_advisory_client.py",
+        "nvd_client.py",
+        "tavily_client.py"
+      ],
+      "patterns_checked": [
+        "AsyncClient constructor with timeout/headers",
+        "Timeout(connect, read, write, pool) granular config",
+        "client.get() / client.post() async calls",
+        "response.raise_for_status() / response.json()",
+        "HTTPStatusError constructor (msg, request, response)",
+        "TimeoutException exception class",
+        "aclose() for async cleanup"
+      ],
+      "hallucinations_found": 0
+    },
+    "tenacity": {
+      "cache_available": true,
+      "files_using": [
+        "epss_client.py",
+        "github_advisory_client.py",
+        "nvd_client.py",
+        "tavily_client.py"
+      ],
+      "patterns_checked": [
+        "@retry decorator with stop/wait/retry/reraise params",
+        "retry_if_exception_type() with tuple of exceptions",
+        "stop_after_attempt(3)",
+        "wait_exponential(multiplier, min, max)",
+        "reraise=True",
+        "async def with @retry (native async support)"
+      ],
+      "hallucinations_found": 0
+    },
+    "structlog": {
+      "cache_available": true,
+      "files_using": [
+        "presidio_adapter.py",
+        "epss_client.py",
+        "github_advisory_client.py",
+        "nvd_client.py",
+        "tavily_client.py"
+      ],
+      "patterns_checked": [
+        "structlog.get_logger(__name__) initialization",
+        "logger.info/debug/warning/exception with structured kwargs"
+      ],
+      "hallucinations_found": 0
+    },
+    "presidio_analyzer": {
+      "cache_available": false,
+      "files_using": ["presidio_adapter.py"],
+      "patterns_checked": [
+        "AnalyzerEngine() constructor",
+        "Pattern(name, regex, score)",
+        "PatternRecognizer(supported_entity, patterns)",
+        "analyzer.registry.add_recognizer()",
+        "analyzer.analyze(text, language, entities, score_threshold)"
+      ],
+      "hallucinations_found": 0,
+      "note": "No Context7 cache for presidio_analyzer — patterns match known Presidio API but cannot verify against cache"
+    },
+    "presidio_anonymizer": {
+      "cache_available": false,
+      "files_using": ["presidio_adapter.py"],
+      "patterns_checked": [
+        "AnonymizerEngine() constructor",
+        "anonymizer.anonymize(text, analyzer_results, operators)",
+        "OperatorConfig('replace', {'new_value': ...})"
+      ],
+      "hallucinations_found": 0,
+      "note": "No Context7 cache for presidio_anonymizer — patterns match known Presidio API but cannot verify against cache"
+    }
+  },
+  "total_hallucinations": 0,
+  "findings": []
+}

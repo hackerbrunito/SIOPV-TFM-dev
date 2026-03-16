@@ -10,7 +10,7 @@ Example: user:alice, viewer, project:siopv
 from __future__ import annotations
 
 import re
-from enum import Enum
+from enum import StrEnum
 from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -20,7 +20,7 @@ _USER_ID_PATTERN = re.compile(r"^[a-zA-Z0-9_@.\-]+$")
 _RESOURCE_ID_PATTERN = re.compile(r"^[a-zA-Z0-9_:\-]+$")
 
 
-class ResourceType(str, Enum):
+class ResourceType(StrEnum):
     """Enum for resource types in the authorization model.
 
     These correspond to the "type" definitions in the OpenFGA model.
@@ -36,7 +36,7 @@ class ResourceType(str, Enum):
         return self.value
 
 
-class Relation(str, Enum):
+class Relation(StrEnum):
     """Enum for relations in the ReBAC model.
 
     Relations define the relationship between a user and a resource.
@@ -61,7 +61,7 @@ class Relation(str, Enum):
         return self.value
 
 
-class Action(str, Enum):
+class Action(StrEnum):
     """Enum for actions that can be performed on resources.
 
     Actions are the operations that users can perform on resources.

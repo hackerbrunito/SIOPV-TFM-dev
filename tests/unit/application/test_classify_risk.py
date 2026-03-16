@@ -178,6 +178,16 @@ def mock_classifier(sample_risk_score) -> MagicMock:
     return mock
 
 
+@pytest.fixture
+def mock_feature_engineer(sample_feature_vector) -> MagicMock:
+    """Create a mock feature engineer."""
+    from siopv.application.ports.feature_engineering import FeatureEngineerPort
+
+    mock = MagicMock(spec=FeatureEngineerPort)
+    mock.extract_features.return_value = sample_feature_vector
+    return mock
+
+
 # === Value Objects Tests ===
 
 
@@ -435,11 +445,14 @@ class TestClassifyRiskUseCase:
     def test_execute_successful(
         self,
         mock_classifier: MagicMock,
+        mock_feature_engineer: MagicMock,
         sample_vulnerability: VulnerabilityRecord,
         sample_enrichment: EnrichmentData,
     ):
         """Test successful classification."""
-        use_case = ClassifyRiskUseCase(classifier=mock_classifier)
+        use_case = ClassifyRiskUseCase(
+            classifier=mock_classifier, feature_engineer=mock_feature_engineer
+        )
         result = use_case.execute(sample_vulnerability, sample_enrichment)
 
         assert result.is_successful
@@ -449,6 +462,7 @@ class TestClassifyRiskUseCase:
 
     def test_execute_with_error(
         self,
+        mock_feature_engineer: MagicMock,
         sample_vulnerability: VulnerabilityRecord,
         sample_enrichment: EnrichmentData,
     ):
@@ -457,7 +471,9 @@ class TestClassifyRiskUseCase:
         mock_classifier.is_loaded.return_value = True
         mock_classifier.predict.side_effect = RuntimeError("Model error")
 
-        use_case = ClassifyRiskUseCase(classifier=mock_classifier)
+        use_case = ClassifyRiskUseCase(
+            classifier=mock_classifier, feature_engineer=mock_feature_engineer
+        )
         result = use_case.execute(sample_vulnerability, sample_enrichment)
 
         assert not result.is_successful
@@ -467,11 +483,14 @@ class TestClassifyRiskUseCase:
     def test_execute_batch(
         self,
         mock_classifier: MagicMock,
+        mock_feature_engineer: MagicMock,
         sample_vulnerability: VulnerabilityRecord,
         sample_enrichment: EnrichmentData,
     ):
         """Test batch classification."""
-        use_case = ClassifyRiskUseCase(classifier=mock_classifier)
+        use_case = ClassifyRiskUseCase(
+            classifier=mock_classifier, feature_engineer=mock_feature_engineer
+        )
 
         vulnerabilities = [sample_vulnerability]
         enrichments = {sample_vulnerability.cve_id.value: sample_enrichment}
@@ -486,10 +505,13 @@ class TestClassifyRiskUseCase:
     def test_get_risk_summary(
         self,
         mock_classifier: MagicMock,
+        mock_feature_engineer: MagicMock,
         sample_risk_score: RiskScore,
     ):
         """Test generating risk summary."""
-        use_case = ClassifyRiskUseCase(classifier=mock_classifier)
+        use_case = ClassifyRiskUseCase(
+            classifier=mock_classifier, feature_engineer=mock_feature_engineer
+        )
 
         results = [
             ClassificationResult(cve_id="CVE-2021-44228", risk_score=sample_risk_score),

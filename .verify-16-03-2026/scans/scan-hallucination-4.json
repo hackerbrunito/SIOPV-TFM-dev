@@ -1,0 +1,25 @@
+{
+  "scanner": "scanner-hallucination-4",
+  "wave": "1.1",
+  "timestamp": "2026-03-16T08:02:00Z",
+  "files_scanned": [
+    "src/siopv/adapters/vectorstore/chroma_adapter.py",
+    "src/siopv/application/orchestration/edges.py",
+    "src/siopv/application/orchestration/graph.py",
+    "src/siopv/application/orchestration/nodes/authorization_node.py",
+    "src/siopv/application/orchestration/nodes/classify_node.py"
+  ],
+  "libraries_verified": [
+    {"library": "chromadb", "version": "0.5+", "cache_file": "chromadb.md", "apis_checked": 8, "hallucinations": 0},
+    {"library": "langgraph", "version": "0.2+", "cache_file": "langgraph.md", "apis_checked": 10, "hallucinations": 0},
+    {"library": "langchain_core", "version": "0.3.x", "cache_file": "langchain_core.md", "apis_checked": 2, "hallucinations": 0},
+    {"library": "structlog", "version": "current", "cache_file": "structlog.md", "apis_checked": 5, "hallucinations": 0}
+  ],
+  "findings": [],
+  "summary": {
+    "total_findings": 0,
+    "files_passed": 5,
+    "files_failed": 0,
+    "result": "PASS"
+  }
+}

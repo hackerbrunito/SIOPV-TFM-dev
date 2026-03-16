@@ -1,0 +1,20 @@
+[
+  {
+    "file": "src/siopv/application/orchestration/nodes/authorization_node.py",
+    "line": 119,
+    "domain": "security",
+    "severity": "MEDIUM",
+    "cwe": "CWE-916",
+    "description": "_pseudonymize() uses unsalted SHA-256 for GDPR pseudonymization. Without a secret salt/pepper, identical user_ids always produce identical hashes, enabling rainbow table lookups to reverse pseudonymized values in logs.",
+    "fix": "Add a secret salt (from settings/env var) to the hash: hashlib.sha256((salt + value).encode()).hexdigest()[:32]. Store the salt in Settings as a SecretStr."
+  },
+  {
+    "file": "src/siopv/application/orchestration/nodes/classify_node.py",
+    "line": 88,
+    "domain": "security",
+    "severity": "MEDIUM",
+    "cwe": "CWE-209",
+    "description": "Exception message f\"Classification failed: {e}\" is stored in pipeline state errors list. Internal exception details (stack traces, library names, file paths) could leak to downstream consumers (logs, API responses, Streamlit dashboard in Phase 7).",
+    "fix": "Use a generic message for state: 'Classification failed: internal error'. Log the full exception separately via logger.exception() (already done on line 89) which is only visible in structured logs."
+  }
+]

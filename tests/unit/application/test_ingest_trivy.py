@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from siopv.adapters.external_apis.trivy_parser import TrivyParser
 from siopv.application.use_cases.ingest_trivy import (
     IngestionResult,
     IngestionStats,
@@ -19,7 +20,7 @@ class TestIngestTrivyReportUseCase:
     @pytest.fixture
     def use_case(self) -> IngestTrivyReportUseCase:
         """Create a use case instance."""
-        return IngestTrivyReportUseCase()
+        return IngestTrivyReportUseCase(parser=TrivyParser())
 
     @pytest.fixture
     def fixtures_path(self) -> Path:

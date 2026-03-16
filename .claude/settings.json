@@ -1,0 +1,166 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "includeGitInstructions": false,
+  "env": {
+    "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE": "70",
+    "ENABLE_TOOL_SEARCH": "auto:5",
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+  },
+  "attribution": {
+    "commit": ""
+  },
+  "cleanupPeriodDays": 30,
+  "statusLine": {
+    "type": "command",
+    "command": "phase=$(cat .build/current-phase 2>/dev/null || echo 'unknown'); pending=$(ls .build/checkpoints/pending/ 2>/dev/null | wc -l | tr -d ' '); echo \"SIOPV Phase: $phase | Pending: $pending\""
+  },
+  "permissions": {
+    "deny": [
+      "Bash(rm -rf /)",
+      "Bash(rm -rf ~)",
+      "Bash(sudo *)",
+      "Bash(git push --force *)",
+      "Bash(git reset --hard *)",
+      "Bash(ssh *)",
+      "Bash(curl * | bash *)",
+      "Read(.env)",
+      "Read(.env.*)",
+      "Edit(.env)",
+      "Edit(.env.*)",
+      "Read(credentials*)",
+      "Edit(credentials*)",
+      "Read(~/.ssh/**)",
+      "Write(~/.ssh/**)",
+      "Edit(~/.ssh/**)",
+      "Read(~/.aws/**)",
+      "Write(~/.aws/**)",
+      "Edit(~/.aws/**)",
+      "Read(~/.gnupg/**)",
+      "Write(~/.gnupg/**)",
+      "Edit(~/.gnupg/**)",
+      "Read(~/.kube/**)",
+      "Read(~/.docker/config.json)",
+      "Read(~/.npmrc)",
+      "Read(~/.git-credentials)",
+      "Read(~/.config/gh/**)",
+      "Read(./secrets/**)"
+    ],
+    "ask": [
+      "Bash(git push *)",
+      "Bash(rm *)",
+      "Bash(docker *)",
+      "Bash(docker-compose *)",
+      "Bash(curl *)"
+    ],
+    "allow": [
+      "Bash(uv *)",
+      "Bash(ruff *)",
+      "Bash(mypy *)",
+      "Bash(pytest *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git status)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(git worktree *)",
+      "Bash(chmod *)",
+      "Bash(mkdir *)",
+      "Bash(ls *)",
+      "Bash(whoami)",
+      "Bash(pwd)",
+      "Bash(cat *)",
+      "Bash(tree *)",
+      "Bash(env)",
+      "Bash(echo *)",
+      "Bash(find *)",
+      "Bash(grep *)",
+      "Bash(touch *)",
+      "Bash(date *)",
+      "Bash(jq *)",
+      "Bash(wc *)",
+      "Bash(md5 *)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [{"type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/session-start.sh"}]
+      },
+      {
+        "hooks": [{"type": "command", "command": "today=$(date +%Y-%m-%d); if [ ! -f .build/checkpoints/daily/$today.json ]; then echo \"REMINDER: No daily checkpoint for $today.\"; fi"}]
+      },
+      {
+        "matcher": "compact",
+        "hooks": [{"type": "command", "command": "echo \"=== POST-COMPACT SIOPV CONTEXT ===\"; echo \"Stack: Python 3.11+, LangGraph 0.2+, Streamlit, OpenFGA, Presidio, fpdf2\"; echo \"Phase: $(cat .build/current-phase 2>/dev/null || echo unknown)\"; echo \"Pending: $(ls .build/checkpoints/pending/ 2>/dev/null | tr '\\n' ',')\"; echo \"Read .claude/workflow/briefing.md. Run /verify before commit.\""}]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [{"type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/pre-write.sh"}]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [{"type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/pre-git-commit.sh"}]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [{"type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/post-code.sh", "timeout": 60}]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [{"type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/coverage-gate.sh", "timeout": 30}]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [{"type": "command", "command": "echo \"=== CONTEXT PRESERVATION ===\"; echo \"Phase: $(cat .build/current-phase 2>/dev/null || echo unknown)\"; echo \"Pending: $(ls .build/checkpoints/pending/ 2>/dev/null | wc -l | tr -d ' ')\""}]
+      },
+      {
+        "async": true,
+        "hooks": [{"type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/pre-compact.sh"}]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [{"type": "command", "command": "pending=$(ls .build/checkpoints/pending/ 2>/dev/null | wc -l | tr -d ' '); if [ \"$pending\" -gt 0 ]; then echo \"WARNING: $pending files pending verification. Run /verify before commit.\"; fi"}]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [{"type": "command", "command": "echo '{\"event\":\"tool_failure\",\"tool\":\"'\"$TOOL_NAME\"'\",\"timestamp\":\"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'\"}' >> .build/logs/agents/$(date +%Y-%m-%d).jsonl 2>/dev/null || true"}]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [{"type": "command", "command": "echo '{\"event\":\"subagent_start\",\"timestamp\":\"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'\"}' >> .build/logs/agents/$(date +%Y-%m-%d).jsonl 2>/dev/null || true"}]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [{"type": "command", "command": "echo '{\"event\":\"subagent_stop\",\"timestamp\":\"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'\"}' >> .build/logs/agents/$(date +%Y-%m-%d).jsonl 2>/dev/null || true"}]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [{"type": "command", "command": "echo '{\"event\":\"session_end\",\"timestamp\":\"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'\"}' >> .build/logs/sessions/$(date +%Y-%m-%d).jsonl 2>/dev/null || true; rm -f /tmp/claude/*.tmp 2>/dev/null || true"}]
+      },
+      {
+        "hooks": [{"type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/session-end.sh"}]
+      }
+    ],
+    "Notification": [
+      {
+        "hooks": [{"type": "command", "command": "echo '{\"event\":\"notification\",\"timestamp\":\"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'\",\"session_id\":\"'$(cat .build/current-session-id 2>/dev/null || echo unknown)'\"}' >> .build/logs/agents/$(date +%Y-%m-%d).jsonl 2>/dev/null || true"}]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [{"type": "command", "command": "~/.claude/hooks/user-prompt-submit.sh"}]
+      }
+    ]
+  }
+}

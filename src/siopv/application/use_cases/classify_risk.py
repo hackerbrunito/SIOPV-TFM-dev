@@ -15,11 +15,11 @@ from typing import TYPE_CHECKING
 
 import structlog
 
-from siopv.adapters.ml.feature_engineer import FeatureEngineer
 from siopv.domain.value_objects import EnrichmentData
 from siopv.domain.value_objects.risk_score import RiskScore
 
 if TYPE_CHECKING:
+    from siopv.application.ports.feature_engineering import FeatureEngineerPort
     from siopv.application.ports.ml_classifier import MLClassifierPort
     from siopv.domain.entities import VulnerabilityRecord
 
@@ -83,16 +83,16 @@ class ClassifyRiskUseCase:
     def __init__(
         self,
         classifier: MLClassifierPort,
-        feature_engineer: FeatureEngineer | None = None,
+        feature_engineer: FeatureEngineerPort | None = None,
     ) -> None:
         """Initialize classification use case.
 
         Args:
             classifier: ML classifier implementation (XGBoostClassifier)
-            feature_engineer: Feature extraction component (uses default if None)
+            feature_engineer: Feature extraction component (must be injected)
         """
         self._classifier = classifier
-        self._feature_engineer = feature_engineer or FeatureEngineer()
+        self._feature_engineer = feature_engineer
 
         logger.info(
             "classify_risk_use_case_initialized",
@@ -119,6 +119,7 @@ class ClassifyRiskUseCase:
 
         try:
             # Step 1: Extract features
+            assert self._feature_engineer is not None, "feature_engineer must be injected"
             feature_vector = self._feature_engineer.extract_features(vulnerability, enrichment)
 
             # Step 2: Predict with XAI
@@ -265,7 +266,7 @@ class ClassifyRiskUseCase:
 
 def create_classify_risk_use_case(
     classifier: MLClassifierPort,
-    feature_engineer: FeatureEngineer | None = None,
+    feature_engineer: FeatureEngineerPort | None = None,
 ) -> ClassifyRiskUseCase:
     """Factory function to create ClassifyRiskUseCase.
 

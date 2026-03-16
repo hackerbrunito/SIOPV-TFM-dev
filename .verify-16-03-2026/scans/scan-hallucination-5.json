@@ -1,0 +1,18 @@
+{
+  "agent": "scanner-hallucination-5",
+  "batch": 5,
+  "files_scanned": [
+    "src/siopv/application/orchestration/nodes/dlp_node.py",
+    "src/siopv/application/orchestration/nodes/enrich_node.py",
+    "src/siopv/application/orchestration/nodes/escalate_node.py",
+    "src/siopv/application/orchestration/nodes/ingest_node.py",
+    "src/siopv/application/orchestration/state.py"
+  ],
+  "libraries_checked": ["structlog", "langgraph", "pydantic", "asyncio", "pathlib"],
+  "findings": [],
+  "summary": {
+    "total_findings": 0,
+    "pass": true,
+    "notes": "All library usage matches Context7 cached docs. structlog: get_logger(__name__) + structured event calls correct. LangGraph: TypedDict state, Annotated reducers with operator.add, partial dict returns from nodes, state.get() access — all verified. No deprecated APIs, no wrong signatures, no hallucinated functions."
+  }
+}

@@ -1,0 +1,56 @@
+[
+  {
+    "file": "src/siopv/adapters/external_apis/epss_client.py",
+    "line": 122,
+    "domain": "security",
+    "severity": "MEDIUM",
+    "cwe": "CWE-20",
+    "description": "CVE ID parameter interpolated into URL without format validation. f-string URL construction (line 122: url = f\"{self._base_url}?cve={cve_id}\") does not validate that cve_id matches CVE-YYYY-NNNNN format. Malformed input could inject additional query parameters via & characters.",
+    "fix": "Add CVE ID format validation (regex r'^CVE-\\d{4}-\\d{4,}$') at the port/domain boundary before the value reaches any adapter."
+  },
+  {
+    "file": "src/siopv/adapters/external_apis/epss_client.py",
+    "line": 82,
+    "domain": "security",
+    "severity": "MEDIUM",
+    "cwe": "CWE-770",
+    "description": "Unbounded in-memory cache (self._cache: dict[str, EPSSScore]) with no size limit or TTL. Processing a large number of unique CVE IDs could lead to memory exhaustion (application-level DoS).",
+    "fix": "Add a max cache size (e.g., LRU with maxsize) or use a TTL-based cache. Consider functools.lru_cache or cachetools.TTLCache."
+  },
+  {
+    "file": "src/siopv/adapters/external_apis/nvd_client.py",
+    "line": 137,
+    "domain": "security",
+    "severity": "MEDIUM",
+    "cwe": "CWE-20",
+    "description": "CVE ID parameter interpolated into URL without format validation. f-string URL construction (line 137: url = f\"{self._base_url}?cveId={cve_id}\") does not validate CVE ID format before use.",
+    "fix": "Add CVE ID format validation (regex r'^CVE-\\d{4}-\\d{4,}$') at the port/domain boundary before the value reaches any adapter."
+  },
+  {
+    "file": "src/siopv/adapters/external_apis/nvd_client.py",
+    "line": 89,
+    "domain": "security",
+    "severity": "MEDIUM",
+    "cwe": "CWE-770",
+    "description": "Unbounded in-memory cache (self._cache: dict[str, NVDEnrichment]) with no size limit or TTL.",
+    "fix": "Add a max cache size or TTL-based eviction policy."
+  },
+  {
+    "file": "src/siopv/adapters/external_apis/github_advisory_client.py",
+    "line": 164,
+    "domain": "security",
+    "severity": "MEDIUM",
+    "cwe": "CWE-770",
+    "description": "Unbounded in-memory cache (self._cache: dict[str, GitHubAdvisory]) with no size limit or TTL.",
+    "fix": "Add a max cache size or TTL-based eviction policy."
+  },
+  {
+    "file": "src/siopv/adapters/external_apis/tavily_client.py",
+    "line": 159,
+    "domain": "security",
+    "severity": "MEDIUM",
+    "cwe": "CWE-319",
+    "description": "API key included in POST request body (payload['api_key'] = self._api_key) rather than in an Authorization header. While this follows Tavily's documented API, request bodies are more likely to be logged by proxies/WAFs than auth headers.",
+    "fix": "No code change needed — this is Tavily's required API pattern. Ensure HTTP access logs do not capture POST bodies."
+  }
+]

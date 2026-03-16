@@ -756,6 +756,21 @@ class TestDependencyInjectionIntegration:
     - Ports are properly configured
     """
 
+    @pytest.fixture(autouse=True)
+    def _patch_get_settings(self, mock_settings: MagicMock) -> None:
+        """Patch get_settings so DI functions receive the mock settings."""
+        with patch(
+            "siopv.infrastructure.di.authorization.get_settings",
+            return_value=mock_settings,
+        ):
+            create_authorization_adapter.cache_clear()
+            get_authorization_port.cache_clear()
+            get_authorization_store_port.cache_clear()
+            yield
+            create_authorization_adapter.cache_clear()
+            get_authorization_port.cache_clear()
+            get_authorization_store_port.cache_clear()
+
     def test_create_authorization_adapter_factory(
         self,
         mock_settings: MagicMock,
@@ -767,17 +782,14 @@ class TestDependencyInjectionIntegration:
         2. Adapter is configured with settings
         """
         # Act
-        adapter = create_authorization_adapter(mock_settings)
+        adapter = create_authorization_adapter()
 
         # Assert
         assert isinstance(adapter, OpenFGAAdapter)
         assert adapter._api_url == mock_settings.openfga_api_url
         assert adapter._store_id == mock_settings.openfga_store_id
 
-    def test_get_authorization_port_from_di(
-        self,
-        mock_settings: MagicMock,
-    ) -> None:
+    def test_get_authorization_port_from_di(self) -> None:
         """Test getting AuthorizationPort from DI container.
 
         Verifies:
@@ -785,7 +797,7 @@ class TestDependencyInjectionIntegration:
         2. Port is usable for authorization checks
         """
         # Act
-        port = get_authorization_port(mock_settings)
+        port = get_authorization_port()
 
         # Assert
         assert isinstance(port, OpenFGAAdapter)
@@ -793,10 +805,7 @@ class TestDependencyInjectionIntegration:
         assert hasattr(port, "check")
         assert hasattr(port, "batch_check")
 
-    def test_get_authorization_store_port_from_di(
-        self,
-        mock_settings: MagicMock,
-    ) -> None:
+    def test_get_authorization_store_port_from_di(self) -> None:
         """Test getting AuthorizationStorePort from DI container.
 
         Verifies:
@@ -804,7 +813,7 @@ class TestDependencyInjectionIntegration:
         2. Port is usable for relationship management
         """
         # Act
-        port = get_authorization_store_port(mock_settings)
+        port = get_authorization_store_port()
 
         # Assert
         assert isinstance(port, OpenFGAAdapter)
@@ -814,10 +823,7 @@ class TestDependencyInjectionIntegration:
         assert hasattr(port, "read_tuples")
 
     @pytest.mark.asyncio
-    async def test_full_integration_with_di_factory(
-        self,
-        mock_settings: MagicMock,
-    ) -> None:
+    async def test_full_integration_with_di_factory(self) -> None:
         """Test complete workflow using DI factories.
 
         Verifies:
@@ -831,8 +837,8 @@ class TestDependencyInjectionIntegration:
             mock_client_instance = AsyncMock()
             mock_client_class.return_value = mock_client_instance
 
-            auth_port = get_authorization_port(mock_settings)
-            _store_port = get_authorization_store_port(mock_settings)
+            auth_port = get_authorization_port()
+            _store_port = get_authorization_store_port()
 
             # Setup mock check response
             mock_response = MagicMock()
