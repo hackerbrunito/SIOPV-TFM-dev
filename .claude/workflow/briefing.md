@@ -3,7 +3,7 @@
 # SIOPV Master Briefing — Compaction-Proof Recovery Document
 
 > **If you just compacted:** Read this file top to bottom before doing anything else.
-> Last updated: 2026-03-17T04:40:33Z
+> Last updated: 2026-03-17T09:08:37Z
 
 ---
 
@@ -35,8 +35,8 @@ analysis with privacy, authorization, and human-in-the-loop controls.
 | 4 | Orquestación (LangGraph) | ✅ Complete |
 | 5 | Autorización (OpenFGA) | ✅ Complete |
 | 6 | Privacidad (DLP / Presidio) | ✅ Complete |
-| 7 | Human-in-the-Loop (Streamlit) | ✅ /verify COMPLETE — AWAITING COMMIT |
-| 8 | Output (Jira + PDF) | ⏳ PENDING |
+| 7 | Human-in-the-Loop (Streamlit) | ✅ Complete — commit 36db797 |
+| 8 | Output (Jira + PDF) | ⏳ NEXT |
 
 ### Metrics (as of Phase 7 /verify complete)
 
@@ -70,14 +70,17 @@ analysis with privacy, authorization, and human-in-the-loop controls.
 > | Wave 8 (hex-arch) | ✅ PASS — findings 1+3 fixed; finding 2 → TODO(phase-8) |
 > | Wave 9 (smoke-test) | ✅ PASS — import OK, pipeline OK (8 CVEs), Streamlit OK |
 >
-> YOUR ROLE after compaction:
-> 1. ruff format/check and mypy already verified PASS this session
-> 2. Run pytest to confirm: cd /Users/bruno/siopv && uv run pytest --tb=short -q 2>&1 | tail -5
-> 3. Clear 22 pending markers: rm -rf /Users/bruno/siopv/.build/checkpoints/pending/*
-> 4. TeamDelete: siopv-verify-20260317-095148
-> 5. Git commit: git add -A && git commit -m "feat(phase7): implement Human-in-the-Loop Streamlit dashboard"
-> 6. Update this briefing: Phase 7 → ✅ Complete, Phase 8 → 🔄 NEXT
-> 7. Human has already approved the commit — NO need to ask again
+> ⚡ NEXT IMMEDIATE ACTION: Spawn Phase 8 build team — briefing is WRITTEN and APPROVED
+>
+> Phase 7 is DONE. Commit: 36db797
+> Phase 8 orchestrator briefing: `/Users/bruno/siopv/.ignorar/research-phase8/orchestrator-phase8-build.md`
+> Metrics baseline: 1,558 tests · 92% coverage · 0 mypy · 0 ruff
+>
+> SPAWN INSTRUCTIONS:
+> 1. TeamCreate(team_name="siopv-phase8-{timestamp}", description="Phase 8 Output Layer build")
+> 2. Spawn orchestrator: Agent(prompt="Read and follow briefing at: /Users/bruno/siopv/.ignorar/research-phase8/orchestrator-phase8-build.md", name="orchestrator", run_in_background=True)
+> 3. Name yourself "team-lead" — orchestrator will SendMessage(to="team-lead") for SPAWN REQUESTs
+> 4. DO NOT re-plan — briefing is fully approved, execute immediately
 
 ---
 

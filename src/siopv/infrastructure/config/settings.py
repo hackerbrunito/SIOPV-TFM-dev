@@ -135,6 +135,10 @@ class Settings(BaseSettings):
     hitl_timeout_level2_hours: int = 8
     hitl_timeout_level3_hours: int = 24
 
+    # === PDF Output (Phase 8) ===
+    output_dir: Path = Path("./output")
+    pdf_include_cot: bool = False
+
 
 @lru_cache
 def get_settings() -> Settings:

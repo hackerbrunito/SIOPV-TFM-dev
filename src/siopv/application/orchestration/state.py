@@ -45,6 +45,12 @@ class PipelineState(TypedDict, total=False):
         escalation_level: Escalation tier: 0=none, 1=analyst, 2=lead, 3=auto-approved (Phase 7)
         review_deadline: ISO 8601 deadline for human review completion (Phase 7)
         report_path: Path to the input Trivy report (optional, for file-based ingestion)
+        output_run_id: LangGraph thread_id set by output_node (Phase 8)
+        output_jira_keys: Jira ticket keys created during output (Phase 8)
+        output_pdf_path: Absolute path to generated PDF report (Phase 8)
+        output_csv_path: Absolute path to generated CSV export (Phase 8)
+        output_json_path: Absolute path to generated JSON export (Phase 8)
+        output_errors: Non-fatal errors during output generation (Phase 8)
         thread_id: Unique identifier for this pipeline execution
         current_node: Name of the currently executing node
     """
@@ -84,6 +90,14 @@ class PipelineState(TypedDict, total=False):
     escalation_timestamp: str | None  # ISO 8601 string (JSON-serializable for LangGraph)
     escalation_level: int  # 0=none, 1=analyst notified, 2=lead escalated, 3=auto-approved
     review_deadline: str | None  # ISO 8601 string (JSON-serializable for LangGraph)
+
+    # Phase 8 - Output
+    output_run_id: str | None  # LangGraph thread_id, set by output_node
+    output_jira_keys: list[str]  # Jira ticket keys created (e.g. ['SEC-123'])
+    output_pdf_path: str | None  # Absolute path to generated PDF
+    output_csv_path: str | None  # Absolute path to generated CSV
+    output_json_path: str | None  # Absolute path to generated JSON
+    output_errors: Annotated[list[str], operator.add]  # Non-fatal errors during output
 
     # Metadata
     thread_id: str
@@ -216,6 +230,13 @@ def create_initial_state(
         escalation_timestamp=None,
         escalation_level=0,
         review_deadline=None,
+        # Phase 8 - Output
+        output_run_id=None,
+        output_jira_keys=[],
+        output_pdf_path=None,
+        output_csv_path=None,
+        output_json_path=None,
+        output_errors=[],
         # Metadata
         thread_id=thread_id or str(uuid.uuid4()),
         current_node="start",

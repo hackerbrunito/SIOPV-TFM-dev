@@ -68,8 +68,8 @@ models/*.pkl
 models/*.joblib
 !models/.gitkeep
 
-# Output
-output/
+# Output (root-level only, not adapters/output/ or tests/.../output/)
+/output/
 reports/
 
 # Logs

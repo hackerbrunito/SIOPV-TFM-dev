@@ -3,17 +3,27 @@
 Main entry point for the vulnerability orchestration system.
 """
 
+from __future__ import annotations
+
 import asyncio
 import json
 import subprocess
 import sys
 from pathlib import Path
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
 
 import typer
 
 from siopv.infrastructure.config.settings import get_settings
 from siopv.infrastructure.logging.setup import configure_logging, get_logger
+
+if TYPE_CHECKING:
+    import structlog
+
+    from siopv.application.ports.jira_client import JiraClientPort
+    from siopv.application.ports.metrics_exporter import MetricsExporterPort
+    from siopv.application.ports.pdf_generator import PdfGeneratorPort
+    from siopv.infrastructure.config.settings import Settings
 
 app = typer.Typer(
     name="siopv",
@@ -39,6 +49,85 @@ def main(
         level="DEBUG" if verbose else settings.log_level,
         json_format=settings.environment == "production",
     )
+
+
+def _build_output_ports(
+    settings: Settings,
+    log: structlog.stdlib.BoundLogger,
+) -> tuple[JiraClientPort | None, PdfGeneratorPort | None, MetricsExporterPort | None]:
+    """Build Phase 8 output ports, gracefully degrading on failure.
+
+    Returns:
+        Tuple of (jira_port, pdf_port, metrics_port) — any may be None
+    """
+    from siopv.infrastructure.di import (  # noqa: PLC0415
+        build_jira_adapter,
+        build_metrics_exporter,
+        build_pdf_adapter,
+    )
+
+    jira_port: JiraClientPort | None = None
+    pdf_port: PdfGeneratorPort | None = None
+    metrics_port: MetricsExporterPort | None = None
+    try:
+        jira_port = build_jira_adapter(settings)
+    except Exception as exc:
+        log.warning("jira_adapter_unavailable", error=str(exc))
+    try:
+        pdf_port = build_pdf_adapter(settings)
+    except Exception as exc:
+        log.warning("pdf_adapter_unavailable", error=str(exc))
+    try:
+        metrics_port = build_metrics_exporter(settings)
+    except Exception as exc:
+        log.warning("metrics_exporter_unavailable", error=str(exc))
+    return jira_port, pdf_port, metrics_port
+
+
+def _print_pipeline_summary(result: dict[str, object], output_dir: Path) -> None:
+    """Print and save pipeline execution summary."""
+    vuln_count = len(result.get("vulnerabilities", []))  # type: ignore[arg-type]
+    classification_count = len(result.get("classifications", {}))  # type: ignore[arg-type]
+    escalated_count = len(result.get("escalated_cves", []))  # type: ignore[arg-type]
+    errors = result.get("errors", [])
+    output_jira_keys = result.get("output_jira_keys", [])
+    output_pdf_path = result.get("output_pdf_path")
+    output_csv_path = result.get("output_csv_path")
+    output_json_path = result.get("output_json_path")
+    output_errors = result.get("output_errors", [])
+
+    summary = {
+        "report_path": str(result.get("report_path", "")),
+        "vulnerabilities_ingested": vuln_count,
+        "classifications": classification_count,
+        "escalated_cves": escalated_count,
+        "errors": errors,
+        "authorization_allowed": result.get("authorization_allowed"),
+        "output_jira_keys": output_jira_keys,
+        "output_pdf_path": output_pdf_path,
+        "output_csv_path": output_csv_path,
+        "output_json_path": output_json_path,
+        "output_errors": output_errors,
+    }
+    summary_path = output_dir / "pipeline_summary.json"
+    summary_path.write_text(json.dumps(summary, indent=2, default=str))
+
+    typer.echo(f"Vulnerabilities ingested: {vuln_count}")
+    typer.echo(f"Classifications: {classification_count}")
+    typer.echo(f"Escalated CVEs: {escalated_count}")
+    if output_jira_keys:
+        typer.echo(f"Jira tickets: {', '.join(output_jira_keys)}")  # type: ignore[arg-type]
+    if output_pdf_path:
+        typer.echo(f"PDF report: {output_pdf_path}")
+    if output_json_path:
+        typer.echo(f"JSON export: {output_json_path}")
+    if output_csv_path:
+        typer.echo(f"CSV export: {output_csv_path}")
+    if errors:
+        typer.echo(f"Errors: {len(errors)}", err=True)  # type: ignore[arg-type]
+    if output_errors:
+        typer.echo(f"Output errors: {len(output_errors)}", err=True)  # type: ignore[arg-type]
+    typer.echo(f"Summary saved to: {summary_path}")
 
 
 @app.command()
@@ -87,8 +176,10 @@ def process_report(
     typer.echo(f"Processing report: {report_path}")
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    settings = get_settings()
     authorization_port = get_authorization_port()
     dlp_port = get_dual_layer_dlp_port()
+    jira_port, pdf_port, metrics_port = _build_output_ports(settings, log)
 
     try:
         result = asyncio.run(
@@ -98,7 +189,9 @@ def process_report(
                 project_id=project_id,
                 authorization_port=authorization_port,
                 dlp_port=dlp_port,
-                # TODO(phase-7): Wire enrichment clients and classifier via DI
+                jira=jira_port,
+                pdf=pdf_port,
+                metrics=metrics_port,
             )
         )
     except Exception as exc:
@@ -106,29 +199,7 @@ def process_report(
         typer.echo(f"Pipeline failed: {exc}", err=True)
         raise typer.Exit(code=1) from exc
 
-    # Write summary to output directory
-    vuln_count = len(result.get("vulnerabilities", []))
-    classification_count = len(result.get("classifications", {}))
-    escalated_count = len(result.get("escalated_cves", []))
-    errors = result.get("errors", [])
-
-    summary = {
-        "report_path": str(report_path),
-        "vulnerabilities_ingested": vuln_count,
-        "classifications": classification_count,
-        "escalated_cves": escalated_count,
-        "errors": errors,
-        "authorization_allowed": result.get("authorization_allowed"),
-    }
-    summary_path = output_dir / "pipeline_summary.json"
-    summary_path.write_text(json.dumps(summary, indent=2, default=str))
-
-    typer.echo(f"Vulnerabilities ingested: {vuln_count}")
-    typer.echo(f"Classifications: {classification_count}")
-    typer.echo(f"Escalated CVEs: {escalated_count}")
-    if errors:
-        typer.echo(f"Errors: {len(errors)}", err=True)
-    typer.echo(f"Summary saved to: {summary_path}")
+    _print_pipeline_summary(dict(result), output_dir)
 
 
 @app.command()

@@ -28,6 +28,10 @@ from siopv.application.use_cases.enrich_context import (
 from siopv.application.use_cases.enrich_context import (
     EnrichmentStats as EnrichmentStatsPhase2,
 )
+from siopv.application.use_cases.generate_report import (
+    GenerateReportUseCase,
+    create_generate_report_use_case,
+)
 from siopv.application.use_cases.ingest_trivy import (
     IngestionResult,
     IngestionStats,
@@ -49,6 +53,7 @@ __all__ = [
     "EnrichContextUseCase",
     "EnrichmentResult",
     "EnrichmentStatsPhase2",
+    "GenerateReportUseCase",
     "IngestTrivyReportUseCase",
     "IngestionResult",
     "IngestionStats",
@@ -58,6 +63,7 @@ __all__ = [
     "create_check_authorization_use_case",
     "create_classify_risk_use_case",
     "create_enrich_context_use_case",
+    "create_generate_report_use_case",
     "create_manage_relationships_use_case",
     "ingest_trivy_report",
 ]

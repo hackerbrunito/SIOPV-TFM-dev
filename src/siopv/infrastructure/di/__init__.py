@@ -47,8 +47,16 @@ from siopv.infrastructure.di.dlp import (
     get_dlp_port,
     get_dual_layer_dlp_port,
 )
+from siopv.infrastructure.di.output import (
+    build_jira_adapter,
+    build_metrics_exporter,
+    build_pdf_adapter,
+)
 
 __all__ = [
+    "build_jira_adapter",
+    "build_metrics_exporter",
+    "build_pdf_adapter",
     "create_authorization_adapter",
     "create_oidc_adapter",
     "create_oidc_middleware",

@@ -9,7 +9,7 @@ from __future__ import annotations
 import sqlite3
 import uuid
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import structlog
 from langchain_core.runnables import RunnableConfig
@@ -29,6 +29,7 @@ from siopv.application.orchestration.nodes import (
     enrich_node,
     escalate_node,
     ingest_node,
+    output_node,
     route_after_authorization,
 )
 from siopv.application.orchestration.state import PipelineState, create_initial_state
@@ -44,8 +45,11 @@ if TYPE_CHECKING:
         VectorStorePort,
     )
     from siopv.application.ports.dlp import DLPPort
+    from siopv.application.ports.jira_client import JiraClientPort
+    from siopv.application.ports.metrics_exporter import MetricsExporterPort
     from siopv.application.ports.ml_classifier import MLClassifierPort
     from siopv.application.ports.parsing import TrivyParserPort
+    from siopv.application.ports.pdf_generator import PdfGeneratorPort
 
 logger = structlog.get_logger(__name__)
 
@@ -99,8 +103,9 @@ class PipelineGraphBuilder:
     - enrich: Context enrichment with CRAG (Phase 2)
     - classify: ML risk classification (Phase 3)
     - escalate: Human review escalation (Phase 4)
+    - output: Report generation — Jira, PDF, CSV/JSON (Phase 8)
 
-    Flow: START -> authorize -> (if allowed) -> ingest -> dlp -> enrich -> classify -> ...
+    Flow: START -> authorize -> ingest -> dlp -> enrich -> classify -> [escalate] -> output -> END
 
     Conditional routing is based on:
     - Authorization check (Phase 5): If denied -> end with 403
@@ -120,6 +125,9 @@ class PipelineGraphBuilder:
         osint_client: OSINTSearchClientPort | None = None,
         vector_store: VectorStorePort | None = None,
         classifier: MLClassifierPort | None = None,
+        jira: JiraClientPort | None = None,
+        pdf: PdfGeneratorPort | None = None,
+        metrics: MetricsExporterPort | None = None,
     ) -> None:
         """Initialize the pipeline builder.
 
@@ -134,6 +142,9 @@ class PipelineGraphBuilder:
             osint_client: OSINT search client for enrichment
             vector_store: Vector store for enrichment cache
             classifier: ML classifier for risk classification
+            jira: Jira client port for ticket creation (Phase 8)
+            pdf: PDF generator port for report rendering (Phase 8)
+            metrics: Metrics exporter port for JSON/CSV output (Phase 8)
         """
         self._checkpoint_db_path = checkpoint_db_path or DEFAULT_CHECKPOINT_DB
         self._trivy_parser = trivy_parser
@@ -145,6 +156,9 @@ class PipelineGraphBuilder:
         self._osint_client = osint_client
         self._vector_store = vector_store
         self._classifier = classifier
+        self._jira = jira
+        self._pdf = pdf
+        self._metrics = metrics
 
         self._graph: StateGraph[PipelineState] | None = None
         self._compiled: CompiledStateGraph[PipelineState] | None = None
@@ -227,9 +241,28 @@ class PipelineGraphBuilder:
         # Escalate node - handles uncertainty escalation
         self._graph.add_node("escalate", escalate_node)
 
+        # Output node - Phase 8 report generation (Jira, PDF, CSV/JSON)
+        async def _output_node(state: PipelineState) -> dict[str, Any]:
+            return await output_node(
+                state,
+                jira=self._jira,
+                pdf=self._pdf,
+                metrics=self._metrics,
+            )
+
+        self._graph.add_node("output", _output_node)
+
         logger.debug(
             "pipeline_nodes_added",
-            nodes=["authorize", "ingest", "dlp", "enrich", "classify", "escalate"],
+            nodes=[
+                "authorize",
+                "ingest",
+                "dlp",
+                "enrich",
+                "classify",
+                "escalate",
+                "output",
+            ],
         )
 
     def _add_edges(self) -> None:
@@ -263,19 +296,22 @@ class PipelineGraphBuilder:
             route_after_classify,
             {
                 "escalate": "escalate",
-                "continue": END,
+                "continue": "output",
                 "end": END,
             },
         )
 
-        # After escalate, go to end
+        # After escalate, go to output
         self._graph.add_conditional_edges(
             "escalate",
             route_after_escalate,
             {
-                "end": END,
+                "end": "output",
             },
         )
+
+        # Output -> END
+        self._graph.add_edge("output", END)
 
         logger.debug("pipeline_edges_added")
 
@@ -384,6 +420,9 @@ def create_pipeline_graph(
     osint_client: OSINTSearchClientPort | None = None,
     vector_store: VectorStorePort | None = None,
     classifier: MLClassifierPort | None = None,
+    jira: JiraClientPort | None = None,
+    pdf: PdfGeneratorPort | None = None,
+    metrics: MetricsExporterPort | None = None,
     with_checkpointer: bool = True,
 ) -> CompiledStateGraph[PipelineState]:
     """Factory function to create and compile the pipeline graph.
@@ -399,6 +438,9 @@ def create_pipeline_graph(
         osint_client: OSINT search client for enrichment
         vector_store: Vector store for enrichment cache
         classifier: ML classifier for risk classification
+        jira: Jira client port for ticket creation (Phase 8)
+        pdf: PDF generator port for report rendering (Phase 8)
+        metrics: Metrics exporter port for JSON/CSV output (Phase 8)
         with_checkpointer: Whether to enable checkpointing
 
     Returns:
@@ -415,6 +457,9 @@ def create_pipeline_graph(
         osint_client=osint_client,
         vector_store=vector_store,
         classifier=classifier,
+        jira=jira,
+        pdf=pdf,
+        metrics=metrics,
     )
 
     return builder.build().compile(with_checkpointer=with_checkpointer)
@@ -436,11 +481,14 @@ async def run_pipeline(
     osint_client: OSINTSearchClientPort | None = None,
     vector_store: VectorStorePort | None = None,
     classifier: MLClassifierPort | None = None,
+    jira: JiraClientPort | None = None,
+    pdf: PdfGeneratorPort | None = None,
+    metrics: MetricsExporterPort | None = None,
 ) -> PipelineState:
     """Run the full pipeline on a Trivy report (async).
 
     Uses ``ainvoke()`` because some graph nodes are async
-    (authorization_node, dlp_node, enrich_node).
+    (authorization_node, dlp_node, enrich_node, output_node).
     Callers in sync contexts (e.g. CLI) should wrap with ``asyncio.run()``.
 
     Args:
@@ -458,6 +506,9 @@ async def run_pipeline(
         osint_client: Optional OSINT search client for enrichment
         vector_store: Optional vector store for enrichment cache
         classifier: Optional ML classifier
+        jira: Optional Jira client port for ticket creation (Phase 8)
+        pdf: Optional PDF generator port for report rendering (Phase 8)
+        metrics: Optional metrics exporter port for JSON/CSV output (Phase 8)
 
     Returns:
         Final pipeline state with all results
@@ -483,6 +534,9 @@ async def run_pipeline(
         osint_client=osint_client,
         vector_store=vector_store,
         classifier=classifier,
+        jira=jira,
+        pdf=pdf,
+        metrics=metrics,
     )
 
     # Configure execution
@@ -521,6 +575,7 @@ async def run_pipeline(
         classification_count=len(result.get("classifications", {})),
         escalated_count=len(result.get("escalated_cves", [])),
         error_count=len(result.get("errors", [])),
+        output_error_count=len(result.get("output_errors", [])),
     )
 
     return cast(PipelineState, result)
