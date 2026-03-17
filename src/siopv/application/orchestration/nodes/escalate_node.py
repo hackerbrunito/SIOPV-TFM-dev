@@ -1,14 +1,16 @@
 """Escalate node for LangGraph pipeline.
 
 Handles escalation of uncertain classifications to human review.
-Part of Phase 4 orchestration logic.
+Phase 4 logic (candidate identification) + Phase 7 HITL interrupt.
 """
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 import structlog
+from langgraph.types import interrupt
 
 from siopv.application.orchestration.utils import calculate_escalation_candidates
 
@@ -17,23 +19,57 @@ if TYPE_CHECKING:
 
 logger = structlog.get_logger(__name__)
 
+# Escalation timeout thresholds (hours → level)
+_ESCALATION_LEVEL_THRESHOLDS: list[tuple[int, int]] = [
+    (24, 3),  # >24h → auto-approved
+    (8, 2),  # >8h  → lead escalated
+    (4, 1),  # >4h  → analyst notified
+]
+
+
+def _calculate_escalation_level(escalation_timestamp: str) -> int:
+    """Calculate escalation level based on elapsed time since escalation.
+
+    Escalation tiers:
+    - 0: <4h elapsed (no escalation)
+    - 1: >4h elapsed (analyst notified)
+    - 2: >8h elapsed (lead escalated)
+    - 3: >24h elapsed (auto-approved)
+
+    Args:
+        escalation_timestamp: ISO 8601 timestamp when escalation was triggered
+
+    Returns:
+        Escalation level integer (0-3)
+    """
+    escalation_time = datetime.fromisoformat(escalation_timestamp)
+    now = datetime.now(UTC)
+    elapsed_hours = (now - escalation_time).total_seconds() / 3600
+
+    for threshold_hours, level in _ESCALATION_LEVEL_THRESHOLDS:
+        if elapsed_hours > threshold_hours:
+            return level
+
+    return 0
+
 
 def escalate_node(state: PipelineState) -> dict[str, object]:
-    """Execute escalation phase as a LangGraph node.
+    """Execute escalation phase as a LangGraph node with HITL interrupt.
 
     This node handles CVEs that require human review due to:
     - High discrepancy between ML and LLM scores
     - Low LLM confidence
     - Adaptive threshold exceeded
 
-    The escalated CVEs are stored in state for the Human-in-the-Loop
-    dashboard (Phase 7) to process.
+    When candidates are found, ``interrupt()`` pauses execution until a human
+    submits a decision via the Streamlit dashboard.  On resume the node
+    re-executes from the top (pre-interrupt logic is idempotent).
 
     Args:
         state: Current pipeline state with classifications and llm_confidence
 
     Returns:
-        State updates with escalated_cves list
+        State updates with escalation fields populated
     """
     logger.info(
         "escalate_node_started",
@@ -48,53 +84,91 @@ def escalate_node(state: PipelineState) -> dict[str, object]:
         logger.warning("escalate_node_skipped", reason="no_classifications")
         return {
             "escalated_cves": [],
+            "escalation_required": False,
             "current_node": "escalate",
         }
 
     try:
-        # Identify CVEs requiring escalation
-        # state.get returns object; typed dicts at runtime
+        # Identify CVEs requiring escalation (idempotent — safe before interrupt)
         escalated = _identify_escalation_candidates(classifications, llm_confidence)  # type: ignore[arg-type]
-
-        logger.info(
-            "escalate_node_complete",
-            escalated_count=len(escalated),
-            total_classifications=len(classifications),
-            escalation_rate=f"{len(escalated) / len(classifications) * 100:.1f}%"
-            if classifications
-            else "0%",
-        )
-
-        # Log details for each escalated CVE
-        for cve_id in escalated:
-            classification = classifications.get(cve_id)
-            confidence = llm_confidence.get(cve_id, 0.0)
-            ml_score = (
-                classification.risk_score.risk_probability
-                if classification and classification.risk_score
-                else 0.0
-            )
-            logger.info(
-                "cve_escalated",
-                cve_id=cve_id,
-                ml_score=ml_score,
-                llm_confidence=confidence,
-                discrepancy=abs(ml_score - confidence),
-            )
-
     except Exception as e:
         error_msg = f"Escalation failed: {e}"
         logger.exception("escalate_node_failed", error=error_msg, exception=str(e))
         return {
             "escalated_cves": [],
+            "escalation_required": False,
             "errors": [error_msg],
             "current_node": "escalate",
         }
-    else:
+
+    if not escalated:
+        logger.info(
+            "escalate_node_complete",
+            escalated_count=0,
+            total_classifications=len(classifications),
+        )
         return {
-            "escalated_cves": escalated,
+            "escalated_cves": [],
+            "escalation_required": False,
             "current_node": "escalate",
         }
+
+    # --- Candidates found: prepare escalation data and interrupt ---
+    now = datetime.now(UTC)
+    escalation_timestamp = now.isoformat()
+    review_deadline = (now + timedelta(hours=24)).isoformat()
+
+    # Build interrupt payload (must be JSON-serializable)
+    escalation_data: dict[str, object] = {
+        "escalated_cves": escalated,
+        "escalation_timestamp": escalation_timestamp,
+        "review_deadline": review_deadline,
+        "summary": _build_escalation_summary(escalated, classifications, llm_confidence),  # type: ignore[arg-type]
+    }
+
+    logger.info(
+        "escalate_node_interrupting",
+        escalated_count=len(escalated),
+        total_classifications=len(classifications),
+        escalation_rate=f"{len(escalated) / len(classifications) * 100:.1f}%",
+    )
+
+    # Pause execution — human resumes via dashboard
+    # NEVER wrap interrupt() in try/except; it uses internal exceptions
+    human_response = interrupt(escalation_data)
+
+    # --- Post-interrupt: process human decision ---
+    decision = (
+        human_response.get("decision", "approve") if isinstance(human_response, dict) else "approve"
+    )
+    modified_score = (
+        human_response.get("modified_score") if isinstance(human_response, dict) else None
+    )
+    modified_recommendation = (
+        human_response.get("modified_recommendation") if isinstance(human_response, dict) else None
+    )
+
+    escalation_level = _calculate_escalation_level(escalation_timestamp)
+
+    logger.info(
+        "escalate_node_complete",
+        escalated_count=len(escalated),
+        human_decision=decision,
+        escalation_level=escalation_level,
+        total_classifications=len(classifications),
+    )
+
+    return {
+        "escalated_cves": escalated,
+        "escalation_required": True,
+        "escalation_timestamp": escalation_timestamp,
+        "review_deadline": review_deadline,
+        "human_decision": decision,
+        "human_modified_score": modified_score,
+        "human_modified_recommendation": modified_recommendation,
+        "escalation_level": escalation_level,
+        "current_node": "escalate",
+    }
 
 
 def _identify_escalation_candidates(
@@ -114,9 +188,43 @@ def _identify_escalation_candidates(
     Returns:
         List of CVE IDs requiring escalation
     """
-
     escalated, _ = calculate_escalation_candidates(classifications, llm_confidence)
     return escalated
+
+
+def _build_escalation_summary(
+    escalated: list[str],
+    classifications: dict[str, object],
+    llm_confidence: dict[str, float],
+) -> list[dict[str, object]]:
+    """Build a JSON-serializable summary of escalated CVEs for the interrupt payload.
+
+    Args:
+        escalated: List of escalated CVE IDs
+        classifications: Dictionary mapping CVE ID to ClassificationResult
+        llm_confidence: Dictionary mapping CVE ID to LLM confidence
+
+    Returns:
+        List of summary dicts for each escalated CVE
+    """
+    summaries: list[dict[str, object]] = []
+    for cve_id in escalated:
+        classification = classifications.get(cve_id)
+        confidence = llm_confidence.get(cve_id, 0.0)
+        ml_score = (
+            classification.risk_score.risk_probability  # type: ignore[attr-defined]
+            if classification and classification.risk_score  # type: ignore[attr-defined]
+            else 0.0
+        )
+        summaries.append(
+            {
+                "cve_id": cve_id,
+                "ml_score": ml_score,
+                "llm_confidence": confidence,
+                "discrepancy": abs(ml_score - confidence),
+            }
+        )
+    return summaries
 
 
 def get_escalation_summary(state: PipelineState) -> dict[str, object]:

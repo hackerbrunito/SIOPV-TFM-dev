@@ -1,0 +1,16 @@
+{
+  "scanner": "scanner-2",
+  "domain": "bpe",
+  "batch": 2,
+  "timestamp": "2026-03-17T10:12:00Z",
+  "files_scanned": [
+    "src/siopv/interfaces/dashboard/app.py",
+    "src/siopv/interfaces/dashboard/components/__init__.py",
+    "src/siopv/interfaces/dashboard/components/case_list.py",
+    "src/siopv/interfaces/dashboard/components/evidence_panel.py",
+    "src/siopv/interfaces/dashboard/components/decision_panel.py"
+  ],
+  "total_violations": 0,
+  "findings": [],
+  "summary": "All 5 files pass BPE checks. Modern type hints (list[], dict[], X | None) used throughout. from __future__ import annotations present. structlog used (not logging/print). collections.abc.Callable used (not typing.Callable). Constants extracted to domain.constants. No Pydantic v1 patterns. No os.path usage. No requests usage."
+}

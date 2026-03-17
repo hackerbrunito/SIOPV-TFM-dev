@@ -1,0 +1,28 @@
+{
+  "scanner": "scanner-2",
+  "domain": "security",
+  "batch": 2,
+  "timestamp": "2026-03-17T10:12:00Z",
+  "files_scanned": [
+    "src/siopv/interfaces/dashboard/app.py",
+    "src/siopv/interfaces/dashboard/components/__init__.py",
+    "src/siopv/interfaces/dashboard/components/case_list.py",
+    "src/siopv/interfaces/dashboard/components/evidence_panel.py",
+    "src/siopv/interfaces/dashboard/components/decision_panel.py"
+  ],
+  "critical": 0,
+  "high": 0,
+  "medium": 0,
+  "low": 1,
+  "findings": [
+    {
+      "file": "src/siopv/interfaces/dashboard/app.py",
+      "line": 132,
+      "domain": "security",
+      "severity": "LOW",
+      "description": "Broad except Exception clause catches all exceptions during thread state inspection. While the exception is logged via structlog.exception (which includes traceback), overly broad exception handling could mask specific error conditions. However, this is acceptable here as it prevents one corrupted thread from blocking discovery of other threads.",
+      "fix": "No fix required — current pattern is defensive and appropriate for thread polling. The exception is logged with full traceback."
+    }
+  ],
+  "summary": "No CRITICAL or HIGH security issues. No hardcoded credentials, no SQL injection (static query only), no command injection, no XSS (Streamlit handles sanitization). SQLite WAL mode correctly configured for concurrent access. User input bounded via st.number_input min/max constraints. 1 LOW finding (broad exception catch, acceptable pattern)."
+}

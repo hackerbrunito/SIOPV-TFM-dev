@@ -8,11 +8,17 @@ from pathlib import Path
 
 import pytest
 
+from siopv.adapters.external_apis.trivy_parser import TrivyParser
 from siopv.application.orchestration.nodes.ingest_node import (
     ingest_node,
     ingest_node_from_dict,
 )
 from siopv.application.orchestration.state import create_initial_state
+from siopv.application.use_cases.ingest_trivy import IngestTrivyReportUseCase
+
+
+def _make_use_case() -> IngestTrivyReportUseCase:
+    return IngestTrivyReportUseCase(parser=TrivyParser())
 
 
 class TestIngestNode:
@@ -62,7 +68,7 @@ class TestIngestNode:
         """Test successful ingestion from file."""
         state = create_initial_state(report_path=str(trivy_report_file))
 
-        result = ingest_node(state)
+        result = ingest_node(state, use_case=_make_use_case())
 
         assert "vulnerabilities" in result
         assert len(result["vulnerabilities"]) == 2
@@ -85,7 +91,7 @@ class TestIngestNode:
         """Test ingestion handles missing file."""
         state = create_initial_state(report_path="/nonexistent/path/report.json")
 
-        result = ingest_node(state)
+        result = ingest_node(state, use_case=_make_use_case())
 
         assert result["vulnerabilities"] == []
         assert result["processed_count"] == 0
@@ -98,7 +104,7 @@ class TestIngestNode:
             thread_id="test-thread-123",
         )
 
-        result = ingest_node(state)
+        result = ingest_node(state, use_case=_make_use_case())
 
         # Node returns partial state, original thread_id preserved
         assert result["current_node"] == "ingest"
@@ -132,7 +138,7 @@ class TestIngestNodeFromDict:
         """Test successful ingestion from dictionary."""
         state = create_initial_state()
 
-        result = ingest_node_from_dict(state, sample_trivy_report)
+        result = ingest_node_from_dict(state, sample_trivy_report, use_case=_make_use_case())
 
         assert "vulnerabilities" in result
         assert len(result["vulnerabilities"]) == 1
@@ -144,7 +150,7 @@ class TestIngestNodeFromDict:
         state = create_initial_state()
         report = {"SchemaVersion": 2, "Results": []}
 
-        result = ingest_node_from_dict(state, report)
+        result = ingest_node_from_dict(state, report, use_case=_make_use_case())
 
         assert result["vulnerabilities"] == []
         assert result["processed_count"] == 0
@@ -156,5 +162,5 @@ class TestIngestNodeFromDict:
 
         result = ingest_node_from_dict(state, report)
 
-        # Should handle gracefully
+        # Should handle gracefully (use_case=None → ValueError caught → error dict)
         assert "vulnerabilities" in result

@@ -32,6 +32,7 @@ from siopv.application.orchestration.nodes import (
     route_after_authorization,
 )
 from siopv.application.orchestration.state import PipelineState, create_initial_state
+from siopv.application.use_cases.ingest_trivy import IngestTrivyReportUseCase
 
 if TYPE_CHECKING:
     from siopv.application.ports import (
@@ -44,6 +45,7 @@ if TYPE_CHECKING:
     )
     from siopv.application.ports.dlp import DLPPort
     from siopv.application.ports.ml_classifier import MLClassifierPort
+    from siopv.application.ports.parsing import TrivyParserPort
 
 logger = structlog.get_logger(__name__)
 
@@ -109,6 +111,7 @@ class PipelineGraphBuilder:
         self,
         *,
         checkpoint_db_path: str | Path | None = None,
+        trivy_parser: TrivyParserPort | None = None,
         authorization_port: AuthorizationPort | None = None,
         dlp_port: DLPPort | None = None,
         nvd_client: NVDClientPort | None = None,
@@ -122,6 +125,7 @@ class PipelineGraphBuilder:
 
         Args:
             checkpoint_db_path: Path to SQLite checkpoint database
+            trivy_parser: Trivy parser port for Phase 1 ingestion
             authorization_port: Authorization port for Phase 5 gatekeeper
             dlp_port: DLP port for Phase 6 privacy guardrail
             nvd_client: NVD API client for enrichment
@@ -132,6 +136,7 @@ class PipelineGraphBuilder:
             classifier: ML classifier for risk classification
         """
         self._checkpoint_db_path = checkpoint_db_path or DEFAULT_CHECKPOINT_DB
+        self._trivy_parser = trivy_parser
         self._authorization_port = authorization_port
         self._dlp_port = dlp_port
         self._nvd_client = nvd_client
@@ -182,8 +187,17 @@ class PipelineGraphBuilder:
 
         self._graph.add_node("authorize", _authorize_node)
 
-        # Ingest node - wraps Phase 1 use case
-        self._graph.add_node("ingest", ingest_node)
+        # Ingest node - Phase 1, use case injected from trivy_parser port
+        _ingest_use_case = (
+            IngestTrivyReportUseCase(parser=self._trivy_parser)
+            if self._trivy_parser is not None
+            else None
+        )
+
+        def _ingest_node(state: PipelineState) -> dict[str, object]:
+            return ingest_node(state, use_case=_ingest_use_case)
+
+        self._graph.add_node("ingest", _ingest_node)
 
         # DLP node - Phase 6 guardrail (sanitize vulnerability descriptions)
         async def _dlp_node(state: PipelineState) -> dict[str, object]:
@@ -361,6 +375,7 @@ class PipelineGraphBuilder:
 def create_pipeline_graph(
     *,
     checkpoint_db_path: str | Path | None = None,
+    trivy_parser: TrivyParserPort | None = None,
     authorization_port: AuthorizationPort | None = None,
     dlp_port: DLPPort | None = None,
     nvd_client: NVDClientPort | None = None,
@@ -375,6 +390,7 @@ def create_pipeline_graph(
 
     Args:
         checkpoint_db_path: Path to SQLite checkpoint database
+        trivy_parser: Trivy parser port for Phase 1 ingestion
         authorization_port: Authorization port for Phase 5 gatekeeper
         dlp_port: DLP port for Phase 6 privacy guardrail
         nvd_client: NVD API client for enrichment
@@ -390,6 +406,7 @@ def create_pipeline_graph(
     """
     builder = PipelineGraphBuilder(
         checkpoint_db_path=checkpoint_db_path,
+        trivy_parser=trivy_parser,
         authorization_port=authorization_port,
         dlp_port=dlp_port,
         nvd_client=nvd_client,
@@ -410,6 +427,7 @@ async def run_pipeline(
     user_id: str | None = None,
     project_id: str | None = None,
     checkpoint_db_path: str | Path | None = None,
+    trivy_parser: TrivyParserPort | None = None,
     authorization_port: AuthorizationPort | None = None,
     dlp_port: DLPPort | None = None,
     nvd_client: NVDClientPort | None = None,
@@ -431,6 +449,7 @@ async def run_pipeline(
         user_id: Optional user ID for authorization (Phase 5)
         project_id: Optional project ID for authorization context (Phase 5)
         checkpoint_db_path: Path to checkpoint database
+        trivy_parser: Optional Trivy parser port for Phase 1 ingestion
         authorization_port: Optional authorization port for Phase 5 gatekeeper
         dlp_port: Optional DLP port for Phase 6 privacy guardrail
         nvd_client: Optional NVD API client for enrichment
@@ -455,6 +474,7 @@ async def run_pipeline(
     # Build graph without checkpointer first (checkpointer added below)
     builder = PipelineGraphBuilder(
         checkpoint_db_path=checkpoint_db_path,
+        trivy_parser=trivy_parser,
         authorization_port=authorization_port,
         dlp_port=dlp_port,
         nvd_client=nvd_client,

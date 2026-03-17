@@ -37,6 +37,13 @@ class PipelineState(TypedDict, total=False):
         llm_confidence: Dict mapping CVE ID to LLM confidence score (0.0-1.0)
         processed_count: Number of vulnerabilities processed
         errors: List of error messages encountered during processing
+        escalation_required: Whether the current case requires human review (Phase 7)
+        human_decision: Human reviewer decision: "approve", "reject", or "modify" (Phase 7)
+        human_modified_score: Overridden risk score when decision is "modify" (Phase 7)
+        human_modified_recommendation: Overridden recommendation when decision is "modify" (Phase 7)
+        escalation_timestamp: ISO 8601 timestamp when escalation was triggered (Phase 7)
+        escalation_level: Escalation tier: 0=none, 1=analyst, 2=lead, 3=auto-approved (Phase 7)
+        review_deadline: ISO 8601 deadline for human review completion (Phase 7)
         report_path: Path to the input Trivy report (optional, for file-based ingestion)
         thread_id: Unique identifier for this pipeline execution
         current_node: Name of the currently executing node
@@ -68,6 +75,15 @@ class PipelineState(TypedDict, total=False):
 
     # Phase 6 - DLP/Privacy
     dlp_result: dict[str, object] | None
+
+    # Phase 7 - Human-in-the-Loop
+    escalation_required: bool
+    human_decision: str | None  # "approve" | "reject" | "modify"
+    human_modified_score: float | None
+    human_modified_recommendation: str | None
+    escalation_timestamp: str | None  # ISO 8601 string (JSON-serializable for LangGraph)
+    escalation_level: int  # 0=none, 1=analyst notified, 2=lead escalated, 3=auto-approved
+    review_deadline: str | None  # ISO 8601 string (JSON-serializable for LangGraph)
 
     # Metadata
     thread_id: str
@@ -192,6 +208,14 @@ def create_initial_state(
         errors=[],
         # Phase 6 - DLP/Privacy
         dlp_result=None,
+        # Phase 7 - Human-in-the-Loop
+        escalation_required=False,
+        human_decision=None,
+        human_modified_score=None,
+        human_modified_recommendation=None,
+        escalation_timestamp=None,
+        escalation_level=0,
+        review_deadline=None,
         # Metadata
         thread_id=thread_id or str(uuid.uuid4()),
         current_node="start",

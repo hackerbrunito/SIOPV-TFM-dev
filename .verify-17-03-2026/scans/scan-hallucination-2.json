@@ -1,0 +1,38 @@
+{
+  "scanner": "scanner-2",
+  "domain": "hallucination",
+  "batch": 2,
+  "timestamp": "2026-03-17T10:12:00Z",
+  "files_scanned": [
+    "src/siopv/interfaces/dashboard/app.py",
+    "src/siopv/interfaces/dashboard/components/__init__.py",
+    "src/siopv/interfaces/dashboard/components/case_list.py",
+    "src/siopv/interfaces/dashboard/components/evidence_panel.py",
+    "src/siopv/interfaces/dashboard/components/decision_panel.py"
+  ],
+  "total_hallucinations": 0,
+  "findings": [],
+  "libraries_verified": {
+    "streamlit": {
+      "apis_used": ["st.cache_resource", "st.fragment(run_every=N)", "st.set_page_config", "st.title", "st.subheader", "st.columns", "st.button", "st.info", "st.warning", "st.caption", "st.markdown", "st.divider", "st.tabs", "st.bar_chart", "st.code", "st.number_input", "st.text_area", "st.rerun", "st.session_state"],
+      "all_verified": true,
+      "notes": "All Streamlit APIs match cached docs. st.fragment(run_every=5) is correct pattern. st.rerun() used correctly to close modify form and refresh after decisions."
+    },
+    "langgraph": {
+      "apis_used": ["SqliteSaver", "Command(resume=value)", "graph.get_state(config)", "snapshot.next", "snapshot.tasks", "task.interrupts", "graph.invoke(Command(resume=...), config)"],
+      "all_verified": true,
+      "notes": "SqliteSaver (sync) is valid import from langgraph.checkpoint.sqlite. Command(resume=value) matches cached pattern exactly. State inspection via get_state/snapshot.tasks/interrupts is correct LangGraph API."
+    },
+    "structlog": {
+      "apis_used": ["structlog.get_logger(__name__)", "logger.info(event, **kv)", "logger.exception(event, **kv)"],
+      "all_verified": true,
+      "notes": "All structlog usage matches cached docs."
+    },
+    "pandas": {
+      "apis_used": ["pd.DataFrame({...})", "df.sort_values(by, ascending)", "df.set_index(col)"],
+      "all_verified": true,
+      "notes": "Standard pandas API, all correct."
+    }
+  },
+  "summary": "No hallucinated library APIs detected. All Streamlit, LangGraph, structlog, and pandas usage verified against Context7 cache. No deprecated APIs, no incorrect signatures, no non-existent functions."
+}

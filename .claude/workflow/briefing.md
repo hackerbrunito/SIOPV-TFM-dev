@@ -3,7 +3,7 @@
 # SIOPV Master Briefing — Compaction-Proof Recovery Document
 
 > **If you just compacted:** Read this file top to bottom before doing anything else.
-> Last updated: 2026-03-16T09:57:54Z
+> Last updated: 2026-03-17T04:40:33Z
 
 ---
 
@@ -35,21 +35,49 @@ analysis with privacy, authorization, and human-in-the-loop controls.
 | 4 | Orquestación (LangGraph) | ✅ Complete |
 | 5 | Autorización (OpenFGA) | ✅ Complete |
 | 6 | Privacidad (DLP / Presidio) | ✅ Complete |
-| 7 | Human-in-the-Loop (Streamlit) | ⏳ PENDING |
+| 7 | Human-in-the-Loop (Streamlit) | ✅ /verify COMPLETE — AWAITING COMMIT |
 | 8 | Output (Jira + PDF) | ⏳ PENDING |
 
-### Metrics (as of 2026-03-15 remediation-hardening)
+### Metrics (as of Phase 7 /verify complete)
 
 | Metric | Value |
 |--------|-------|
-| Tests passing | 1,476 |
-| Coverage | 92.02% |
+| Tests passing | 1,558 |
+| Coverage | 92% |
 | mypy errors | 0 |
 | ruff errors | 0 |
 
 ### ⚡ NEXT IMMEDIATE ACTION
 
-> Remediation-hardening complete. Review Phase 7 gating conditions before starting Phase 7.
+> /verify pipeline COMPLETE — ALL 9 WAVES PASSED. Human approved commit. Ready to execute.
+>
+> COMPLETED VERIFY RUN:
+> - Team: siopv-verify-20260317-095148 (ALL agents shut down including orchestrator)
+> - Verify dir: /Users/bruno/siopv/.verify-17-03-2026
+>
+> PIPELINE STATUS (2026-03-17T04:40Z) — ALL DONE:
+> | Wave | Status |
+> |------|--------|
+> | Pre-wave | ✅ PASS |
+> | Wave 1 (5 scanners) | ✅ PASS — 0 findings |
+> | Wave 1B (judge) | ✅ PASS — 1 LOW non-blocking |
+> | Wave 2 (reviewer+testgen) | ✅ PASS — 9/10, 92% cov, 1558 tests |
+> | Wave 3 (fixers) | ⏭ SKIPPED |
+> | Wave 4 (integration+async) | ✅ PASS — 6 MEDIUM non-blocking |
+> | Wave 5 (semantic+circular) | ✅ PASS — 2 MEDIUM non-blocking, 0 cycles |
+> | Wave 6 (imports+deps) | ✅ PASS — 3 HIGH CVEs fixed (pyjwt→2.12.1, pillow→12.1.1, langgraph→1.0.10) |
+> | Wave 7 (config-validator) | ✅ PASS — 0 docker mismatches |
+> | Wave 8 (hex-arch) | ✅ PASS — findings 1+3 fixed; finding 2 → TODO(phase-8) |
+> | Wave 9 (smoke-test) | ✅ PASS — import OK, pipeline OK (8 CVEs), Streamlit OK |
+>
+> YOUR ROLE after compaction:
+> 1. ruff format/check and mypy already verified PASS this session
+> 2. Run pytest to confirm: cd /Users/bruno/siopv && uv run pytest --tb=short -q 2>&1 | tail -5
+> 3. Clear 22 pending markers: rm -rf /Users/bruno/siopv/.build/checkpoints/pending/*
+> 4. TeamDelete: siopv-verify-20260317-095148
+> 5. Git commit: git add -A && git commit -m "feat(phase7): implement Human-in-the-Loop Streamlit dashboard"
+> 6. Update this briefing: Phase 7 → ✅ Complete, Phase 8 → 🔄 NEXT
+> 7. Human has already approved the commit — NO need to ask again
 
 ---
 

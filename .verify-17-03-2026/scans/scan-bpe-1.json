@@ -1,0 +1,22 @@
+{
+  "scanner": "scanner-1",
+  "domain": "bpe",
+  "wave": 1,
+  "timestamp": "2026-03-17T10:10:00Z",
+  "files_scanned": [
+    "src/siopv/domain/constants.py",
+    "src/siopv/application/orchestration/state.py",
+    "src/siopv/application/ports/human_review.py",
+    "src/siopv/application/ports/__init__.py",
+    "src/siopv/application/orchestration/nodes/escalate_node.py"
+  ],
+  "findings": [],
+  "summary": {
+    "total_findings": 0,
+    "critical": 0,
+    "high": 0,
+    "medium": 0,
+    "low": 0,
+    "notes": "All files use modern Python patterns: list[str] not List[str], dict[str,X] not Dict, X | None not Optional[X], structlog not logging/print, from __future__ import annotations, proper type hints on all function params/returns, TypedDict for LangGraph state (correct per spec), Protocol with runtime_checkable for ports, dataclass for value objects, __all__ exports present."
+  }
+}

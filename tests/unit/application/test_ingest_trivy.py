@@ -230,7 +230,7 @@ class TestIngestTrivyReportFunction:
         """Test the convenience function works."""
         report_path = fixtures_path / "trivy-alpine-report.json"
 
-        result = ingest_trivy_report(report_path)
+        result = ingest_trivy_report(report_path, parser=TrivyParser())
 
         assert isinstance(result, IngestionResult)
         assert isinstance(result.stats, IngestionStats)

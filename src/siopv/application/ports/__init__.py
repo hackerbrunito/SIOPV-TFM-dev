@@ -16,6 +16,7 @@ from siopv.application.ports.enrichment_clients import (
     OSINTSearchClientPort,
 )
 from siopv.application.ports.feature_engineering import FeatureEngineerPort
+from siopv.application.ports.human_review import HumanReviewPort
 from siopv.application.ports.ml_classifier import (
     DatasetLoaderPort,
     MLClassifierPort,
@@ -33,6 +34,7 @@ __all__ = [
     "EPSSClientPort",
     "FeatureEngineerPort",
     "GitHubAdvisoryClientPort",
+    "HumanReviewPort",
     "MLClassifierPort",
     "ModelTrainerPort",
     "NVDClientPort",

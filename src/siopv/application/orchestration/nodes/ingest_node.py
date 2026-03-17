@@ -50,12 +50,17 @@ def ingest_node(
             "current_node": "ingest",
         }
 
-    try:
-        # Use injected use case or create a default one
-        if use_case is None:
-            from siopv.adapters.external_apis.trivy_parser import TrivyParser  # noqa: PLC0415
+    if use_case is None:
+        error_msg = "use_case is required — inject IngestTrivyReportUseCase via graph wiring"
+        logger.error("ingest_node_failed", error=error_msg)
+        return {
+            "vulnerabilities": [],
+            "processed_count": 0,
+            "errors": [error_msg],
+            "current_node": "ingest",
+        }
 
-            use_case = IngestTrivyReportUseCase(parser=TrivyParser())
+    try:
         result = use_case.execute(Path(report_path))
 
         logger.info(
@@ -113,11 +118,17 @@ def ingest_node_from_dict(
 
     logger.info("ingest_node_from_dict_started", thread_id=state.get("thread_id"))
 
-    try:
-        if use_case is None:
-            from siopv.adapters.external_apis.trivy_parser import TrivyParser  # noqa: PLC0415
+    if use_case is None:
+        error_msg = "use_case is required — inject IngestTrivyReportUseCase via graph wiring"
+        logger.error("ingest_node_from_dict_failed", error=error_msg)
+        return {
+            "vulnerabilities": [],
+            "processed_count": 0,
+            "errors": [error_msg],
+            "current_node": "ingest",
+        }
 
-            use_case = IngestTrivyReportUseCase(parser=TrivyParser())
+    try:
         result = use_case.execute_from_dict(report_data)
 
         logger.info(

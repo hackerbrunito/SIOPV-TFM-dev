@@ -98,3 +98,6 @@ claude-verification-reports/
 .claude/CLAUDE.local.md
 .claude/settings.local.json
 .claude/research-cache/
+
+# Build checkpoints (ephemeral verification markers)
+.build/

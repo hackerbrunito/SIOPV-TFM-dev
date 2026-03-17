@@ -1,0 +1,22 @@
+{
+  "generated_at": "2026-03-17T10:22:00Z",
+  "total_findings": 1,
+  "critical": 0,
+  "high": 0,
+  "medium": 0,
+  "low": 1,
+  "false_positives_removed": 0,
+  "findings": [
+    {
+      "id": "finding-001",
+      "file": "src/siopv/interfaces/dashboard/app.py",
+      "line": 132,
+      "domain": "security",
+      "severity": "LOW",
+      "description": "Broad except Exception clause catches all exceptions during thread state inspection. While the exception is logged via structlog.exception (which includes traceback), overly broad exception handling could mask specific error conditions. However, this is acceptable here as it prevents one corrupted thread from blocking discovery of other threads.",
+      "fix": "No fix required — current pattern is defensive and appropriate for thread polling. The exception is logged with full traceback.",
+      "cross_domain": false,
+      "fixer_id": null
+    }
+  ]
+}

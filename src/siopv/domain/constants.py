@@ -24,3 +24,7 @@ RISK_PROBABILITY_LOW_THRESHOLD = 0.2  # >=0.2 = LOW (below this = MINIMAL)
 # Used to calculate prediction confidence from probability values
 CONFIDENCE_CENTER_PROBABILITY = 0.5  # Center point for confidence calculation
 CONFIDENCE_SCALE_FACTOR = 2  # Scale factor: abs(prob - 0.5) * 2
+
+# Dashboard display limits
+CASE_LIST_CVE_DISPLAY_LIMIT = 3  # Max CVE IDs shown inline before "+N more"
+ELAPSED_TIME_HOURS_PER_DAY = 24  # Hours threshold for switching to "Nd ago" display

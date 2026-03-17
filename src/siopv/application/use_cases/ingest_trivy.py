@@ -174,21 +174,17 @@ class IngestTrivyReportUseCase:
 
 def ingest_trivy_report(
     report_path: Path | str,
-    parser: TrivyParserPort | None = None,
+    parser: TrivyParserPort,
 ) -> IngestionResult:
     """Convenience function to ingest a Trivy report.
 
     Args:
         report_path: Path to Trivy JSON report
-        parser: Optional TrivyParserPort implementation. Defaults to TrivyParser.
+        parser: TrivyParserPort implementation to use for parsing.
 
     Returns:
         IngestionResult with processed records and statistics
     """
-    if parser is None:
-        from siopv.adapters.external_apis.trivy_parser import TrivyParser  # noqa: PLC0415
-
-        parser = TrivyParser()
     use_case = IngestTrivyReportUseCase(parser=parser)
     return use_case.execute(report_path)
 

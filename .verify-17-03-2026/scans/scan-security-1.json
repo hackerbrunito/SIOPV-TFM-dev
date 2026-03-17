@@ -1,0 +1,22 @@
+{
+  "scanner": "scanner-1",
+  "domain": "security",
+  "wave": 1,
+  "timestamp": "2026-03-17T10:10:00Z",
+  "files_scanned": [
+    "src/siopv/domain/constants.py",
+    "src/siopv/application/orchestration/state.py",
+    "src/siopv/application/ports/human_review.py",
+    "src/siopv/application/ports/__init__.py",
+    "src/siopv/application/orchestration/nodes/escalate_node.py"
+  ],
+  "findings": [],
+  "summary": {
+    "total_findings": 0,
+    "critical": 0,
+    "high": 0,
+    "medium": 0,
+    "low": 0,
+    "notes": "No hardcoded credentials (CWE-798), no SQL/command injection (CWE-89/78), no XSS vectors (CWE-79), no insecure deserialization (CWE-502), no auth bypasses. constants.py has only numeric thresholds. state.py uses uuid4() for thread_id. escalate_node.py logs exceptions via structlog (not exposed to end users). Port interfaces define contracts only. No prompt injection risks in these files."
+  }
+}

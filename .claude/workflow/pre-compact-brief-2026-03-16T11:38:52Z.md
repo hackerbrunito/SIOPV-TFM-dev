@@ -1,0 +1,1 @@
+I am going to spawn a full-fledged team of agents with TeamCreate as per my default configuration. If you want me to use a subagent only, a single task, or handle it directly instead, say so now and I will follow your instruction.
