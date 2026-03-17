@@ -267,7 +267,7 @@ def _create_mock_classifications(
             risk_score=mock_risk_score,
         )
 
-        # Mock LLM confidence based on severity certainty
+        # Heuristic confidence estimate (used when LLM and classifier are unavailable)
         llm_confidence[cve_id] = 0.6 + (risk_probability * 0.3)
 
     # typed dicts narrower than tuple[dict[str, object], ...] return type

@@ -332,20 +332,17 @@ class TestHandleDecision:
 class TestGetDbConnection:
     """Tests for ``get_db_connection``."""
 
-    @patch("siopv.interfaces.dashboard.app.get_settings")
     @patch("siopv.interfaces.dashboard.app.sqlite3")
     @patch("siopv.interfaces.dashboard.app.st")
     def test_connects_with_wal_mode(
         self,
         mock_st: MagicMock,  # noqa: ARG002
         mock_sqlite: MagicMock,
-        mock_get_settings: MagicMock,
     ) -> None:
-        from siopv.interfaces.dashboard.app import get_db_connection
-
-        mock_settings = MagicMock()
-        mock_settings.checkpoints_db = "/tmp/test.db"
-        mock_get_settings.return_value = mock_settings
+        from siopv.interfaces.dashboard.app import (
+            DEFAULT_CHECKPOINT_DB,
+            get_db_connection,
+        )
 
         mock_conn = MagicMock()
         mock_sqlite.connect.return_value = mock_conn
@@ -354,23 +351,23 @@ class TestGetDbConnection:
         get_db_connection.clear()
         result = get_db_connection()
 
-        mock_sqlite.connect.assert_called_once_with("/tmp/test.db", check_same_thread=False)
+        mock_sqlite.connect.assert_called_once_with(
+            str(DEFAULT_CHECKPOINT_DB), check_same_thread=False
+        )
         mock_conn.execute.assert_called_once_with("PRAGMA journal_mode=WAL")
         assert result is mock_conn
 
-    @patch("siopv.interfaces.dashboard.app.get_settings")
     @patch("siopv.interfaces.dashboard.app.sqlite3")
     @patch("siopv.interfaces.dashboard.app.st")
     def test_falls_back_to_default_checkpoint_db(
         self,
         mock_st: MagicMock,  # noqa: ARG002
         mock_sqlite: MagicMock,
-        mock_get_settings: MagicMock,
     ) -> None:
-        from siopv.interfaces.dashboard.app import get_db_connection
-
-        mock_settings = MagicMock(spec=[])  # No checkpoints_db attribute
-        mock_get_settings.return_value = mock_settings
+        from siopv.interfaces.dashboard.app import (
+            DEFAULT_CHECKPOINT_DB,
+            get_db_connection,
+        )
 
         mock_conn = MagicMock()
         mock_sqlite.connect.return_value = mock_conn
@@ -378,8 +375,10 @@ class TestGetDbConnection:
         get_db_connection.clear()
         get_db_connection()
 
-        # Should use DEFAULT_CHECKPOINT_DB as fallback
-        assert mock_sqlite.connect.called
+        # Uses DEFAULT_CHECKPOINT_DB directly
+        mock_sqlite.connect.assert_called_once_with(
+            str(DEFAULT_CHECKPOINT_DB), check_same_thread=False
+        )
 
 
 # ---------------------------------------------------------------------------

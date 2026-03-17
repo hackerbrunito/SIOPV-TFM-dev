@@ -49,8 +49,6 @@ class TavilyClient(OSINTSearchClientPort):
     - Circuit breaker for fault tolerance
     """
 
-    TAVILY_API_URL = "https://api.tavily.com/search"
-
     # HTTP status codes
     HTTP_UNAUTHORIZED = 401
     HTTP_TOO_MANY_REQUESTS = 429
@@ -70,6 +68,7 @@ class TavilyClient(OSINTSearchClientPort):
             settings: Application settings with Tavily configuration
             client: Optional pre-configured httpx client (for testing)
         """
+        self._api_url = settings.tavily_base_url
         self._api_key = (
             settings.tavily_api_key.get_secret_value() if settings.tavily_api_key else None
         )
@@ -168,7 +167,7 @@ class TavilyClient(OSINTSearchClientPort):
 
         logger.debug("tavily_search_request", query=query[:100])
 
-        response = await client.post(self.TAVILY_API_URL, json=payload)
+        response = await client.post(self._api_url, json=payload)
 
         if response.status_code == self.HTTP_UNAUTHORIZED:
             logger.error("tavily_invalid_api_key")

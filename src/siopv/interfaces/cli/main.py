@@ -165,6 +165,7 @@ def process_report(
         build_llm_analysis,
         build_nvd_client,
         build_osint_client,
+        build_trivy_parser,
         build_vector_store,
         get_authorization_port,
         get_dual_layer_dlp_port,
@@ -187,6 +188,9 @@ def process_report(
     dlp_port = get_dual_layer_dlp_port()
     jira_port, pdf_port, metrics_port = _build_output_ports(settings, log)
 
+    # Trivy parser (Phase 1 ingestion)
+    trivy_parser = build_trivy_parser()
+
     # Enrichment ports
     nvd_client = build_nvd_client(settings)
     epss_client = build_epss_client(settings)
@@ -204,6 +208,7 @@ def process_report(
         result = asyncio.run(
             run_pipeline(
                 report_path=report_path,
+                trivy_parser=trivy_parser,
                 user_id=user_id,
                 project_id=project_id,
                 authorization_port=authorization_port,

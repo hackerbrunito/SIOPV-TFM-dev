@@ -47,15 +47,13 @@ class Settings(BaseSettings):
 
     # === Tavily Search ===
     tavily_api_key: SecretStr | None = None
+    tavily_base_url: str = "https://api.tavily.com/search"
 
     # === Jira ===
     jira_base_url: str | None = None
     jira_email: str | None = None
     jira_api_token: SecretStr | None = None
     jira_project_key: str | None = None
-
-    # === Database ===
-    database_url: str = "sqlite+aiosqlite:///./siopv.db"
 
     # === ChromaDB ===
     chroma_persist_dir: Path = Path("./chroma_data")
@@ -121,19 +119,10 @@ class Settings(BaseSettings):
 
     # === ML Model ===
     model_path: Path = Path("./models/xgboost_risk_model.json")
-    model_base_path: Path = Path("./models")
-    model_max_size_bytes: int = 104857600  # 100MB
-    model_signing_key: SecretStr | None = None  # HMAC key for model integrity
-    uncertainty_threshold: float = 0.3
 
     # === Circuit Breaker ===
     circuit_breaker_failure_threshold: int = 5
     circuit_breaker_recovery_timeout: int = 60  # seconds
-
-    # === Human-in-the-Loop ===
-    hitl_timeout_level1_hours: int = 4
-    hitl_timeout_level2_hours: int = 8
-    hitl_timeout_level3_hours: int = 24
 
     # === PDF Output (Phase 8) ===
     output_dir: Path = Path("./output")

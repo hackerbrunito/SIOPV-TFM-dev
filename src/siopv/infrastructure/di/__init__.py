@@ -57,6 +57,7 @@ from siopv.infrastructure.di.enrichment import (
 )
 from siopv.infrastructure.di.ml import (
     build_classifier,
+    build_trivy_parser,
 )
 from siopv.infrastructure.di.output import (
     build_jira_adapter,
@@ -74,6 +75,7 @@ __all__ = [
     "build_nvd_client",
     "build_osint_client",
     "build_pdf_adapter",
+    "build_trivy_parser",
     "build_vector_store",
     "create_authorization_adapter",
     "create_oidc_adapter",

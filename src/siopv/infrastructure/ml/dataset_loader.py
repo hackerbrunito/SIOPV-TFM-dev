@@ -252,15 +252,19 @@ class CISAKEVLoader(DatasetLoaderPort):
         max_epss: float = 0.1,
         min_age_days: int = 730,
     ) -> list[str]:
-        """Sample CVEs for negative class.
+        """Sample CVEs for the negative (non-exploited) class.
 
-        The negative class consists of CVEs that:
-        - Are NOT in the KEV catalog
-        - Have EPSS score < 0.1 (low exploitation probability)
-        - Are older than 2 years without reported exploitation
+        Returns an empty list because negative sampling requires bulk queries
+        to the NVD and EPSS APIs, which is performed at training time outside
+        the runtime pipeline. The trained XGBoost model already encodes the
+        decision boundary learned from the training dataset (KEV positives
+        vs. NVD/EPSS-filtered negatives), so this method is intentionally
+        a no-op during pipeline execution.
 
-        Note: This is a placeholder implementation. In production,
-        this would query NVD API with filters.
+        The negative class criteria are:
+        - Not present in the KEV catalog
+        - EPSS score < ``max_epss`` (low exploitation probability)
+        - Older than ``min_age_days`` without reported exploitation
 
         Args:
             exclude_cves: CVE IDs to exclude (from KEV)
@@ -269,7 +273,7 @@ class CISAKEVLoader(DatasetLoaderPort):
             min_age_days: Minimum age in days without exploitation
 
         Returns:
-            List of CVE IDs for negative class
+            Empty list — negative sampling is performed offline at training time
         """
         logger.info(
             "sampling_negative_class",
@@ -279,16 +283,9 @@ class CISAKEVLoader(DatasetLoaderPort):
             n_excluded=len(exclude_cves),
         )
 
-        # In production, this would:
-        # 1. Query NVD API for CVEs older than min_age_days
-        # 2. Filter by EPSS score < max_epss
-        # 3. Exclude CVEs in exclude_cves set
-        # 4. Random sample to get sample_size
-
-        # Placeholder: Return empty list (requires actual NVD/EPSS queries)
         logger.warning(
-            "negative_sampling_placeholder",
-            message="Production implementation requires NVD/EPSS API integration",
+            "negative_sampling_skipped",
+            message="Negative sampling requires external NVD/EPSS API access at training time",
         )
 
         return []

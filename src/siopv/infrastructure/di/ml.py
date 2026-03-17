@@ -1,7 +1,8 @@
-"""Dependency injection factory functions for ML components.
+"""Dependency injection factory functions for ML and ingestion components.
 
 Factory functions for creating ML classification adapters that implement
-MLClassifierPort. Supports graceful degradation when model files are missing.
+MLClassifierPort, and the TrivyParser adapter that implements TrivyParserPort.
+Supports graceful degradation when model files are missing.
 """
 
 from __future__ import annotations
@@ -10,13 +11,26 @@ from typing import TYPE_CHECKING
 
 import structlog
 
+from siopv.adapters.external_apis.trivy_parser import TrivyParser
 from siopv.adapters.ml.xgboost_classifier import XGBoostClassifier
 from siopv.application.ports.ml_classifier import MLClassifierPort
+from siopv.application.ports.parsing import TrivyParserPort
 
 if TYPE_CHECKING:
     from siopv.infrastructure.config import Settings
 
 logger = structlog.get_logger(__name__)
+
+
+def build_trivy_parser() -> TrivyParserPort:
+    """Create a TrivyParser adapter instance.
+
+    Returns:
+        TrivyParserPort implementation for parsing Trivy JSON reports
+    """
+    parser = TrivyParser()
+    logger.info("trivy_parser_created")
+    return parser
 
 
 def build_classifier(settings: Settings) -> MLClassifierPort | None:
@@ -45,4 +59,5 @@ def build_classifier(settings: Settings) -> MLClassifierPort | None:
 
 __all__ = [
     "build_classifier",
+    "build_trivy_parser",
 ]

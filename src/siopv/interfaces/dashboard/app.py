@@ -25,7 +25,6 @@ from siopv.application.orchestration.graph import (
     DEFAULT_CHECKPOINT_DB,
     PipelineGraphBuilder,
 )
-from siopv.infrastructure.config.settings import get_settings
 from siopv.interfaces.dashboard.components.case_list import render_case_list
 from siopv.interfaces.dashboard.components.decision_panel import (
     render_decision_panel,
@@ -52,8 +51,7 @@ def get_db_connection() -> sqlite3.Connection:
     Returns:
         SQLite connection with WAL mode and check_same_thread disabled.
     """
-    settings = get_settings()
-    db_path = getattr(settings, "checkpoints_db", None) or DEFAULT_CHECKPOINT_DB
+    db_path = DEFAULT_CHECKPOINT_DB
     conn = sqlite3.connect(str(db_path), check_same_thread=False)
     conn.execute("PRAGMA journal_mode=WAL")
     logger.info("dashboard_db_connected", db_path=str(db_path))

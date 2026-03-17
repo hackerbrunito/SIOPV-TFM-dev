@@ -182,17 +182,7 @@ def test_settings_jira_full_configuration():
     assert settings.jira_project_key == "SEC"
 
 
-# === Database & ChromaDB Tests ===
-
-
-def test_settings_database_defaults():
-    """Test database defaults to SQLite."""
-    # Arrange & Act
-    with patch.dict(os.environ, {"SIOPV_ANTHROPIC_API_KEY": "test-key"}, clear=True):
-        settings = Settings()
-
-    # Assert
-    assert settings.database_url == "sqlite+aiosqlite:///./siopv.db"
+# === ChromaDB Tests ===
 
 
 def test_settings_chroma_defaults():
@@ -234,16 +224,14 @@ def test_settings_ml_model_defaults():
 
     # Assert
     assert settings.model_path == Path("./models/xgboost_risk_model.json")
-    assert settings.uncertainty_threshold == 0.3
 
 
 def test_settings_ml_model_custom():
-    """Test ML model with custom path and threshold."""
+    """Test ML model with custom path."""
     # Arrange
     env_vars = {
         "SIOPV_ANTHROPIC_API_KEY": "test-key",
         "SIOPV_MODEL_PATH": "/opt/models/custom_model.json",
-        "SIOPV_UNCERTAINTY_THRESHOLD": "0.5",
     }
 
     # Act
@@ -252,7 +240,6 @@ def test_settings_ml_model_custom():
 
     # Assert
     assert settings.model_path == Path("/opt/models/custom_model.json")
-    assert settings.uncertainty_threshold == 0.5
 
 
 # === Circuit Breaker Tests ===
@@ -285,41 +272,6 @@ def test_settings_circuit_breaker_custom():
     # Assert
     assert settings.circuit_breaker_failure_threshold == 10
     assert settings.circuit_breaker_recovery_timeout == 120
-
-
-# === Human-in-the-Loop Tests ===
-
-
-def test_settings_hitl_defaults():
-    """Test HITL timeout defaults."""
-    # Arrange & Act
-    with patch.dict(os.environ, {"SIOPV_ANTHROPIC_API_KEY": "test-key"}, clear=True):
-        settings = Settings()
-
-    # Assert
-    assert settings.hitl_timeout_level1_hours == 4
-    assert settings.hitl_timeout_level2_hours == 8
-    assert settings.hitl_timeout_level3_hours == 24
-
-
-def test_settings_hitl_custom():
-    """Test HITL timeouts with custom values."""
-    # Arrange
-    env_vars = {
-        "SIOPV_ANTHROPIC_API_KEY": "test-key",
-        "SIOPV_HITL_TIMEOUT_LEVEL1_HOURS": "2",
-        "SIOPV_HITL_TIMEOUT_LEVEL2_HOURS": "6",
-        "SIOPV_HITL_TIMEOUT_LEVEL3_HOURS": "48",
-    }
-
-    # Act
-    with patch.dict(os.environ, env_vars, clear=True):
-        settings = Settings()
-
-    # Assert
-    assert settings.hitl_timeout_level1_hours == 2
-    assert settings.hitl_timeout_level2_hours == 6
-    assert settings.hitl_timeout_level3_hours == 48
 
 
 # === Claude Model Configuration Tests ===
