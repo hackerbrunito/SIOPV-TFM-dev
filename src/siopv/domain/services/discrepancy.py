@@ -4,19 +4,33 @@ Implements the adaptive threshold logic from spec section 3.4:
 - discrepancy = |ml_score - llm_confidence|
 - threshold = percentile_90(historical_discrepancies)
 - if discrepancy > threshold OR llm_confidence < 0.7 -> escalate
+
+Note: Imports from application.orchestration.state are deferred to function
+bodies to break a circular import chain (domain → application → edges → domain).
 """
 
 from __future__ import annotations
 
+import types
+from typing import TYPE_CHECKING
+
 import structlog
 
-from siopv.domain.services.discrepancy_types import (
-    DiscrepancyHistory,
-    DiscrepancyResult,
-    ThresholdConfig,
-)
+if TYPE_CHECKING:
+    from siopv.application.orchestration.state import (
+        DiscrepancyHistory,
+        DiscrepancyResult,
+        ThresholdConfig,
+    )
 
 logger = structlog.get_logger(__name__)
+
+
+def _import_state_types() -> types.ModuleType:
+    """Deferred import to avoid circular dependency with application layer."""
+    from siopv.application.orchestration import state  # noqa: PLC0415
+
+    return state
 
 
 def calculate_discrepancy(
@@ -39,7 +53,9 @@ def calculate_discrepancy(
     Returns:
         DiscrepancyResult with analysis
     """
-    config = config or ThresholdConfig()
+    state = _import_state_types()
+
+    config = config or state.ThresholdConfig()
     effective_threshold = threshold if threshold is not None else config.base_threshold
 
     discrepancy = abs(ml_score - llm_confidence)
@@ -47,7 +63,7 @@ def calculate_discrepancy(
     # Determine if escalation is needed
     should_escalate = discrepancy > effective_threshold or llm_confidence < config.confidence_floor
 
-    return DiscrepancyResult(
+    return state.DiscrepancyResult(  # type: ignore[no-any-return]
         cve_id=cve_id,
         ml_score=ml_score,
         llm_confidence=llm_confidence,
@@ -77,8 +93,10 @@ def calculate_batch_discrepancies(
     Returns:
         Tuple of (list of DiscrepancyResult, adaptive_threshold)
     """
-    config = config or ThresholdConfig()
-    history = history or DiscrepancyHistory(max_size=config.history_size)
+    state = _import_state_types()
+
+    config = config or state.ThresholdConfig()
+    history = history or state.DiscrepancyHistory(max_size=config.history_size)
 
     results = []
 
@@ -88,11 +106,11 @@ def calculate_batch_discrepancies(
         if classification.risk_score is None:  # type: ignore[attr-defined]
             # Handle missing scores
             results.append(
-                DiscrepancyResult(
+                state.DiscrepancyResult(
                     cve_id=cve_id,
                     ml_score=0.0,
                     # dict values are object; float at runtime
-                    llm_confidence=llm_confidence.get(cve_id, 0.5),  # type: ignore[arg-type]
+                    llm_confidence=llm_confidence.get(cve_id, 0.5),
                     discrepancy=1.0,  # Maximum uncertainty
                     should_escalate=True,
                 )

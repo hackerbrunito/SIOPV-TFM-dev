@@ -150,7 +150,6 @@ show_error_codes = true
 
 [[tool.mypy.overrides]]
 module = [
-    "fpdf.*",
     "imblearn.*",
     "lime.*",
     "openfga_sdk.*",
@@ -161,10 +160,6 @@ module = [
     "streamlit.*",
 ]
 ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
-module = ["siopv.adapters.output.fpdf2_adapter"]
-disallow_subclassing_any = false
 
 [[tool.mypy.overrides]]
 module = ["siopv.interfaces.dashboard.*"]

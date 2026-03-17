@@ -14,8 +14,8 @@ from typing import Any
 
 import structlog
 
+from siopv.adapters.dlp._haiku_utils import create_haiku_client, extract_text_from_response
 from siopv.application.ports.llm_analysis import LLMAnalysisPort, VulnerabilityAnalysis
-from siopv.infrastructure.clients.anthropic import create_haiku_client, extract_text_from_response
 
 logger = structlog.get_logger(__name__)
 
