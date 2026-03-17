@@ -470,3 +470,138 @@ class TestRelevanceCalculation:
 
         # Should be capped at 1.0
         assert relevance == 1.0
+
+
+class TestLLMAnalysisIntegration:
+    """Tests for LLM analysis integration in enrichment use case."""
+
+    @pytest.fixture
+    def mock_llm_analysis(self) -> AsyncMock:
+        """Create mock LLM analysis port."""
+        from siopv.application.ports.llm_analysis import VulnerabilityAnalysis
+
+        mock = AsyncMock()
+        mock.analyze_vulnerability = AsyncMock(
+            return_value=VulnerabilityAnalysis(
+                summary="Critical RCE via JNDI injection in Log4j2",
+                remediation_recommendation="Upgrade to Log4j 2.17.1 or later",
+                relevance_assessment=0.95,
+                reasoning="Log4Shell is actively exploited with high EPSS score",
+            )
+        )
+        return mock
+
+    @pytest.mark.asyncio
+    async def test_enrichment_with_llm_analysis(
+        self,
+        mock_nvd_client: AsyncMock,
+        mock_epss_client: AsyncMock,
+        mock_github_client: AsyncMock,
+        mock_osint_client: AsyncMock,
+        mock_vector_store: AsyncMock,
+        mock_llm_analysis: AsyncMock,
+        sample_vulnerability: VulnerabilityRecord,
+    ) -> None:
+        """Test enrichment with LLM analysis populates LLM fields."""
+        use_case = EnrichContextUseCase(
+            nvd_client=mock_nvd_client,
+            epss_client=mock_epss_client,
+            github_client=mock_github_client,
+            osint_client=mock_osint_client,
+            vector_store=mock_vector_store,
+            llm_analysis=mock_llm_analysis,
+        )
+
+        result = await use_case.execute(sample_vulnerability)
+
+        assert result.enrichment is not None
+        assert result.enrichment.llm_summary == "Critical RCE via JNDI injection in Log4j2"
+        assert result.enrichment.llm_remediation == "Upgrade to Log4j 2.17.1 or later"
+        assert result.enrichment.llm_relevance_assessment == 0.95
+        assert result.enrichment.llm_reasoning is not None
+        # LLM relevance overrides heuristic
+        assert result.enrichment.relevance_score == 0.95
+        mock_llm_analysis.analyze_vulnerability.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_enrichment_without_llm_backward_compatible(
+        self,
+        use_case: EnrichContextUseCase,
+        sample_vulnerability: VulnerabilityRecord,
+    ) -> None:
+        """Test enrichment without LLM analysis keeps heuristic behavior."""
+        result = await use_case.execute(sample_vulnerability)
+
+        assert result.enrichment is not None
+        assert result.enrichment.llm_summary is None
+        assert result.enrichment.llm_remediation is None
+        assert result.enrichment.llm_relevance_assessment is None
+        assert result.enrichment.llm_reasoning is None
+        # Heuristic score: NVD(0.4) + EPSS(0.2) + GitHub(0.2) = 0.8
+        assert result.enrichment.relevance_score == 0.8
+
+    @pytest.mark.asyncio
+    async def test_llm_failure_falls_back_to_heuristic(
+        self,
+        mock_nvd_client: AsyncMock,
+        mock_epss_client: AsyncMock,
+        mock_github_client: AsyncMock,
+        mock_osint_client: AsyncMock,
+        mock_vector_store: AsyncMock,
+        sample_vulnerability: VulnerabilityRecord,
+    ) -> None:
+        """Test that LLM failure gracefully falls back to heuristic score."""
+        mock_llm = AsyncMock()
+        mock_llm.analyze_vulnerability = AsyncMock(side_effect=RuntimeError("LLM API unavailable"))
+
+        use_case = EnrichContextUseCase(
+            nvd_client=mock_nvd_client,
+            epss_client=mock_epss_client,
+            github_client=mock_github_client,
+            osint_client=mock_osint_client,
+            vector_store=mock_vector_store,
+            llm_analysis=mock_llm,
+        )
+
+        result = await use_case.execute(sample_vulnerability)
+
+        assert result.enrichment is not None
+        assert result.error is None
+        # LLM fields should be None (failure)
+        assert result.enrichment.llm_summary is None
+        assert result.enrichment.llm_relevance_assessment is None
+        # Heuristic score preserved
+        assert result.enrichment.relevance_score == 0.8
+
+    @pytest.mark.asyncio
+    async def test_llm_receives_correct_context(
+        self,
+        mock_nvd_client: AsyncMock,
+        mock_epss_client: AsyncMock,
+        mock_github_client: AsyncMock,
+        mock_osint_client: AsyncMock,
+        mock_vector_store: AsyncMock,
+        mock_llm_analysis: AsyncMock,
+        sample_vulnerability: VulnerabilityRecord,
+    ) -> None:
+        """Test that LLM receives enrichment context with correct keys."""
+        use_case = EnrichContextUseCase(
+            nvd_client=mock_nvd_client,
+            epss_client=mock_epss_client,
+            github_client=mock_github_client,
+            osint_client=mock_osint_client,
+            vector_store=mock_vector_store,
+            llm_analysis=mock_llm_analysis,
+        )
+
+        await use_case.execute(sample_vulnerability)
+
+        call_args = mock_llm_analysis.analyze_vulnerability.call_args
+        cve_id_arg = call_args[0][0]
+        context_arg = call_args[0][1]
+
+        assert cve_id_arg == "CVE-2021-44228"
+        assert "nvd_description" in context_arg
+        assert "epss_score" in context_arg
+        assert "github_advisory" in context_arg
+        assert "heuristic_relevance" in context_arg

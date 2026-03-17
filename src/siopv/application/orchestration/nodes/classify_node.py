@@ -17,16 +17,18 @@ from siopv.domain.value_objects.risk_score import RiskScore
 
 if TYPE_CHECKING:
     from siopv.application.orchestration.state import PipelineState
+    from siopv.application.ports.llm_analysis import LLMAnalysisPort
     from siopv.application.ports.ml_classifier import MLClassifierPort
     from siopv.domain.value_objects import EnrichmentData
 
 logger = structlog.get_logger(__name__)
 
 
-def classify_node(
+async def classify_node(
     state: PipelineState,
     *,
     classifier: MLClassifierPort | None = None,
+    llm_analysis: LLMAnalysisPort | None = None,
 ) -> dict[str, object]:
     """Execute classification phase as a LangGraph node.
 
@@ -36,6 +38,7 @@ def classify_node(
     Args:
         state: Current pipeline state with vulnerabilities and enrichments
         classifier: ML classifier implementation (optional, uses mock if None)
+        llm_analysis: LLM analysis port for real confidence evaluation (optional)
 
     Returns:
         State updates with classifications dict and llm_confidence
@@ -72,10 +75,11 @@ def classify_node(
             )
         else:
             # state.get returns object; narrowed types at runtime
-            classifications, llm_confidence = _run_classification(
+            classifications, llm_confidence = await _run_classification(
                 vulnerabilities=vulnerabilities,  # type: ignore[arg-type]
                 enrichments=enrichments,  # type: ignore[arg-type]
                 classifier=classifier,
+                llm_analysis=llm_analysis,
             )
 
         logger.info(
@@ -101,10 +105,11 @@ def classify_node(
         }
 
 
-def _run_classification(
+async def _run_classification(
     vulnerabilities: list[object],
     enrichments: dict[str, object],
     classifier: MLClassifierPort,
+    llm_analysis: LLMAnalysisPort | None = None,
 ) -> tuple[dict[str, object], dict[str, object]]:
     """Run classification using ClassifyRiskUseCase.
 
@@ -112,6 +117,7 @@ def _run_classification(
         vulnerabilities: List of VulnerabilityRecord to classify
         enrichments: Dictionary mapping CVE ID to EnrichmentData
         classifier: ML classifier implementation
+        llm_analysis: LLM analysis port for real confidence evaluation (optional)
 
     Returns:
         Tuple of (classifications dict, llm_confidence dict)
@@ -130,31 +136,62 @@ def _run_classification(
         cve_id = classification_result.cve_id
         classifications[cve_id] = classification_result
 
-        # Extract LLM confidence from risk score
-        # For now, use ML probability as proxy for LLM confidence
-        # In production, this would come from actual LLM evaluation
         if classification_result.risk_score is not None:
-            llm_confidence[cve_id] = _estimate_llm_confidence(
-                classification_result,
-                # enrichments values are object; EnrichmentData at runtime
-                enrichments.get(cve_id),  # type: ignore[arg-type]
-            )
+            if llm_analysis is not None:
+                # Real LLM confidence evaluation
+                classification_dict = {
+                    "cve_id": cve_id,
+                    "risk_probability": classification_result.risk_score.risk_probability,
+                    "risk_label": classification_result.risk_score.risk_label,
+                }
+                enrichment_dict = {}
+                enrichment_obj = enrichments.get(cve_id)
+                if enrichment_obj is not None:
+                    # EnrichmentData at runtime
+                    enrichment_dict = {
+                        "cve_id": enrichment_obj.cve_id,  # type: ignore[attr-defined]
+                        "relevance_score": enrichment_obj.relevance_score,  # type: ignore[attr-defined]
+                    }
+                try:
+                    llm_confidence[cve_id] = await llm_analysis.evaluate_confidence(
+                        cve_id,
+                        classification_dict,
+                        enrichment_dict,
+                    )
+                    logger.info(
+                        "llm_confidence_evaluated",
+                        cve_id=cve_id,
+                        confidence=llm_confidence[cve_id],
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "llm_confidence_fallback",
+                        cve_id=cve_id,
+                        error=str(exc),
+                    )
+                    llm_confidence[cve_id] = _estimate_llm_confidence_fallback(
+                        classification_result,
+                        enrichments.get(cve_id),  # type: ignore[arg-type]
+                    )
+            else:
+                # Heuristic fallback when no LLM is configured
+                llm_confidence[cve_id] = _estimate_llm_confidence_fallback(
+                    classification_result,
+                    enrichments.get(cve_id),  # type: ignore[arg-type]
+                )
 
     # typed dicts narrower than tuple[dict[str, object], ...] return type
     return classifications, llm_confidence  # type: ignore[return-value]
 
 
-def _estimate_llm_confidence(
+def _estimate_llm_confidence_fallback(
     classification: ClassificationResult,
     enrichment: EnrichmentData | None,
 ) -> float:
-    """Estimate LLM confidence based on classification and enrichment.
+    """Estimate LLM confidence using heuristics when no LLM is configured.
 
-    In production, this would be replaced by actual LLM evaluation.
-    For now, we estimate based on:
-    - Risk score confidence
-    - Enrichment relevance score
-    - Feature availability
+    Uses ML classification probability extremeness and enrichment relevance
+    as proxy signals for confidence.
 
     Args:
         classification: ClassificationResult from ML model

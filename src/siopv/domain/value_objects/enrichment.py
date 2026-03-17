@@ -416,6 +416,16 @@ class EnrichmentData(BaseModel):
         description="CRAG relevance score for retrieved documents",
     )
 
+    # LLM analysis fields (populated by LLMAnalysisPort adapter)
+    llm_summary: str | None = Field(default=None, description="LLM-generated vulnerability summary")
+    llm_remediation: str | None = Field(
+        default=None, description="LLM-generated remediation recommendation"
+    )
+    llm_relevance_assessment: float | None = Field(
+        default=None, ge=0.0, le=1.0, description="LLM-graded relevance score (0-1)"
+    )
+    llm_reasoning: str | None = Field(default=None, description="LLM chain-of-thought reasoning")
+
     @property
     def is_enriched(self) -> bool:
         """Check if any enrichment data is available."""

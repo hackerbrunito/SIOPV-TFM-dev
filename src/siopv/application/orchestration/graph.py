@@ -46,6 +46,7 @@ if TYPE_CHECKING:
     )
     from siopv.application.ports.dlp import DLPPort
     from siopv.application.ports.jira_client import JiraClientPort
+    from siopv.application.ports.llm_analysis import LLMAnalysisPort
     from siopv.application.ports.metrics_exporter import MetricsExporterPort
     from siopv.application.ports.ml_classifier import MLClassifierPort
     from siopv.application.ports.parsing import TrivyParserPort
@@ -125,6 +126,7 @@ class PipelineGraphBuilder:
         osint_client: OSINTSearchClientPort | None = None,
         vector_store: VectorStorePort | None = None,
         classifier: MLClassifierPort | None = None,
+        llm_analysis: LLMAnalysisPort | None = None,
         jira: JiraClientPort | None = None,
         pdf: PdfGeneratorPort | None = None,
         metrics: MetricsExporterPort | None = None,
@@ -142,6 +144,7 @@ class PipelineGraphBuilder:
             osint_client: OSINT search client for enrichment
             vector_store: Vector store for enrichment cache
             classifier: ML classifier for risk classification
+            llm_analysis: LLM analysis port for confidence evaluation
             jira: Jira client port for ticket creation (Phase 8)
             pdf: PDF generator port for report rendering (Phase 8)
             metrics: Metrics exporter port for JSON/CSV output (Phase 8)
@@ -156,6 +159,7 @@ class PipelineGraphBuilder:
         self._osint_client = osint_client
         self._vector_store = vector_store
         self._classifier = classifier
+        self._llm_analysis = llm_analysis
         self._jira = jira
         self._pdf = pdf
         self._metrics = metrics
@@ -228,15 +232,20 @@ class PipelineGraphBuilder:
                 github_client=self._github_client,
                 osint_client=self._osint_client,
                 vector_store=self._vector_store,
+                llm_analysis=self._llm_analysis,
             )
 
         self._graph.add_node("enrich", _enrich_node)
 
-        # Classify node - wraps Phase 3 use case
-        self._graph.add_node(
-            "classify",
-            lambda state: classify_node(state, classifier=self._classifier),
-        )
+        # Classify node - wraps Phase 3 use case (async for LLM confidence)
+        async def _classify_node(state: PipelineState) -> dict[str, object]:
+            return await classify_node(
+                state,
+                classifier=self._classifier,
+                llm_analysis=self._llm_analysis,
+            )
+
+        self._graph.add_node("classify", _classify_node)
 
         # Escalate node - handles uncertainty escalation
         self._graph.add_node("escalate", escalate_node)
@@ -420,6 +429,7 @@ def create_pipeline_graph(
     osint_client: OSINTSearchClientPort | None = None,
     vector_store: VectorStorePort | None = None,
     classifier: MLClassifierPort | None = None,
+    llm_analysis: LLMAnalysisPort | None = None,
     jira: JiraClientPort | None = None,
     pdf: PdfGeneratorPort | None = None,
     metrics: MetricsExporterPort | None = None,
@@ -438,6 +448,7 @@ def create_pipeline_graph(
         osint_client: OSINT search client for enrichment
         vector_store: Vector store for enrichment cache
         classifier: ML classifier for risk classification
+        llm_analysis: LLM analysis port for confidence evaluation
         jira: Jira client port for ticket creation (Phase 8)
         pdf: PDF generator port for report rendering (Phase 8)
         metrics: Metrics exporter port for JSON/CSV output (Phase 8)
@@ -457,6 +468,7 @@ def create_pipeline_graph(
         osint_client=osint_client,
         vector_store=vector_store,
         classifier=classifier,
+        llm_analysis=llm_analysis,
         jira=jira,
         pdf=pdf,
         metrics=metrics,
@@ -481,6 +493,7 @@ async def run_pipeline(
     osint_client: OSINTSearchClientPort | None = None,
     vector_store: VectorStorePort | None = None,
     classifier: MLClassifierPort | None = None,
+    llm_analysis: LLMAnalysisPort | None = None,
     jira: JiraClientPort | None = None,
     pdf: PdfGeneratorPort | None = None,
     metrics: MetricsExporterPort | None = None,
@@ -506,6 +519,7 @@ async def run_pipeline(
         osint_client: Optional OSINT search client for enrichment
         vector_store: Optional vector store for enrichment cache
         classifier: Optional ML classifier
+        llm_analysis: Optional LLM analysis port for confidence evaluation
         jira: Optional Jira client port for ticket creation (Phase 8)
         pdf: Optional PDF generator port for report rendering (Phase 8)
         metrics: Optional metrics exporter port for JSON/CSV output (Phase 8)
@@ -534,6 +548,7 @@ async def run_pipeline(
         osint_client=osint_client,
         vector_store=vector_store,
         classifier=classifier,
+        llm_analysis=llm_analysis,
         jira=jira,
         pdf=pdf,
         metrics=metrics,

@@ -3,7 +3,7 @@
 # SIOPV Master Briefing — Compaction-Proof Recovery Document
 
 > **If you just compacted:** Read this file top to bottom before doing anything else.
-> Last updated: 2026-03-17T09:08:37Z
+> Last updated: 2026-03-17T10:08:17Z
 
 ---
 

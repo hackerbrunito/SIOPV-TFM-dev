@@ -32,7 +32,6 @@ app = typer.Typer(
 )
 
 # Path to the Streamlit dashboard app (Phase 7)
-# TODO(phase-7): Update this path once the Streamlit app is created
 STREAMLIT_APP_PATH = Path(__file__).resolve().parent.parent / "dashboard" / "app.py"
 
 
@@ -160,6 +159,13 @@ def process_report(
     """Process a Trivy vulnerability report through the SIOPV pipeline."""
     from siopv.application.orchestration.graph import run_pipeline  # noqa: PLC0415
     from siopv.infrastructure.di import (  # noqa: PLC0415
+        build_classifier,
+        build_epss_client,
+        build_github_client,
+        build_llm_analysis,
+        build_nvd_client,
+        build_osint_client,
+        build_vector_store,
         get_authorization_port,
         get_dual_layer_dlp_port,
     )
@@ -181,6 +187,19 @@ def process_report(
     dlp_port = get_dual_layer_dlp_port()
     jira_port, pdf_port, metrics_port = _build_output_ports(settings, log)
 
+    # Enrichment ports
+    nvd_client = build_nvd_client(settings)
+    epss_client = build_epss_client(settings)
+    github_client = build_github_client(settings)
+    osint_client = build_osint_client(settings)
+    vector_store = build_vector_store(settings)
+
+    # ML classifier
+    classifier = build_classifier(settings)
+
+    # LLM analysis (optional — None if API key is empty)
+    llm_analysis = build_llm_analysis(settings)
+
     try:
         result = asyncio.run(
             run_pipeline(
@@ -189,6 +208,13 @@ def process_report(
                 project_id=project_id,
                 authorization_port=authorization_port,
                 dlp_port=dlp_port,
+                nvd_client=nvd_client,
+                epss_client=epss_client,
+                github_client=github_client,
+                osint_client=osint_client,
+                vector_store=vector_store,
+                classifier=classifier,
+                llm_analysis=llm_analysis,
                 jira=jira_port,
                 pdf=pdf_port,
                 metrics=metrics_port,

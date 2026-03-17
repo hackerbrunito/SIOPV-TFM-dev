@@ -27,6 +27,7 @@ if TYPE_CHECKING:
         OSINTSearchClientPort,
         VectorStorePort,
     )
+    from siopv.application.ports.llm_analysis import LLMAnalysisPort
     from siopv.domain.entities import VulnerabilityRecord
     from siopv.domain.value_objects import (
         EPSSScore,
@@ -101,6 +102,7 @@ class EnrichContextUseCase:
         osint_client: OSINTSearchClientPort,
         vector_store: VectorStorePort,
         *,
+        llm_analysis: LLMAnalysisPort | None = None,
         relevance_threshold: float = RELEVANCE_THRESHOLD,
     ):
         """Initialize enrichment use case.
@@ -111,6 +113,7 @@ class EnrichContextUseCase:
             github_client: GitHub Advisory client
             osint_client: Tavily OSINT client
             vector_store: ChromaDB adapter
+            llm_analysis: Optional LLM analysis port for enhanced relevance scoring
             relevance_threshold: Threshold for OSINT fallback (default 0.6)
         """
         self._nvd = nvd_client
@@ -118,6 +121,7 @@ class EnrichContextUseCase:
         self._github = github_client
         self._osint = osint_client
         self._vector_store = vector_store
+        self._llm_analysis = llm_analysis
         self._relevance_threshold = relevance_threshold
 
     async def execute(
@@ -173,8 +177,19 @@ class EnrichContextUseCase:
                 if osint_used:
                     relevance_score = self._calculate_relevance(sources)
 
+            # Step 3.5: LLM analysis (optional enhancement)
+            llm_fields: dict[str, str | float | None] = {}
+            if self._llm_analysis is not None:
+                llm_fields = await self._run_llm_analysis(cve_id, sources, relevance_score)
+                # LLM relevance overrides heuristic when available
+                llm_rel = llm_fields.get("llm_relevance_assessment")
+                if llm_rel is not None:
+                    relevance_score = float(llm_rel)
+
             # Step 4: Build and store enrichment
-            enrichment = self._build_enrichment(cve_id, sources, relevance_score)
+            enrichment = self._build_enrichment(
+                cve_id, sources, relevance_score, llm_fields=llm_fields
+            )
             await self._vector_store.store_enrichment(enrichment)
 
             logger.info(
@@ -182,6 +197,7 @@ class EnrichContextUseCase:
                 cve_id=cve_id,
                 relevance=relevance_score,
                 osint_used=osint_used,
+                llm_used=bool(llm_fields),
             )
 
             return EnrichmentResult(
@@ -346,11 +362,62 @@ class EnrichContextUseCase:
 
         return min(1.0, score)
 
+    async def _run_llm_analysis(
+        self,
+        cve_id: str,
+        sources: EnrichmentSources,
+        heuristic_relevance: float,
+    ) -> dict[str, str | float | None]:
+        """Run LLM analysis on enrichment context.
+
+        Args:
+            cve_id: CVE identifier
+            sources: EnrichmentSources with retrieved data
+            heuristic_relevance: Heuristic relevance score for context
+
+        Returns:
+            Dictionary with LLM analysis fields, empty on failure
+        """
+        context: dict[str, object] = {
+            "heuristic_relevance": heuristic_relevance,
+        }
+        if sources.nvd and sources.nvd.description:
+            context["nvd_description"] = sources.nvd.description
+        if sources.epss:
+            context["epss_score"] = sources.epss.score
+        if sources.github and sources.github.summary:
+            context["github_advisory"] = sources.github.summary
+        if sources.osint:
+            context["osint_results"] = [r.content for r in sources.osint]
+
+        try:
+            # self._llm_analysis is checked non-None by caller
+            analysis = await self._llm_analysis.analyze_vulnerability(  # type: ignore[union-attr]
+                cve_id, context
+            )
+        except Exception as e:
+            logger.warning("llm_analysis_failed", cve_id=cve_id, error=str(e))
+            return {}
+        else:
+            logger.info(
+                "llm_analysis_complete",
+                cve_id=cve_id,
+                llm_relevance=analysis.relevance_assessment,
+            )
+            return {
+                "llm_summary": analysis.summary,
+                "llm_remediation": analysis.remediation_recommendation,
+                "llm_relevance_assessment": analysis.relevance_assessment,
+                "llm_reasoning": analysis.reasoning,
+            }
+
     def _build_enrichment(
         self,
         cve_id: str,
         sources: EnrichmentSources,
         relevance_score: float,
+        *,
+        llm_fields: dict[str, str | float | None] | None = None,
     ) -> EnrichmentData:
         """Build EnrichmentData from sources.
 
@@ -358,18 +425,22 @@ class EnrichContextUseCase:
             cve_id: CVE identifier
             sources: EnrichmentSources with data
             relevance_score: Calculated relevance
+            llm_fields: Optional LLM analysis fields to include
 
         Returns:
             EnrichmentData instance
         """
-        return EnrichmentData(
-            cve_id=cve_id,
-            nvd=sources.nvd,
-            epss=sources.epss,
-            github_advisory=sources.github,
-            osint_results=sources.osint,
-            relevance_score=relevance_score,
-        )
+        kwargs: dict[str, object] = {
+            "cve_id": cve_id,
+            "nvd": sources.nvd,
+            "epss": sources.epss,
+            "github_advisory": sources.github,
+            "osint_results": sources.osint,
+            "relevance_score": relevance_score,
+        }
+        if llm_fields:
+            kwargs.update(llm_fields)
+        return EnrichmentData(**kwargs)  # type: ignore[arg-type]
 
     def _calculate_stats(self, results: list[EnrichmentResult]) -> EnrichmentStats:
         """Calculate statistics from enrichment results.
@@ -408,6 +479,8 @@ def create_enrich_context_use_case(
     github_client: GitHubAdvisoryClientPort,
     osint_client: OSINTSearchClientPort,
     vector_store: VectorStorePort,
+    *,
+    llm_analysis: LLMAnalysisPort | None = None,
 ) -> EnrichContextUseCase:
     """Factory function to create EnrichContextUseCase.
 
@@ -417,6 +490,7 @@ def create_enrich_context_use_case(
         github_client: GitHub Advisory client
         osint_client: Tavily OSINT client
         vector_store: ChromaDB adapter
+        llm_analysis: Optional LLM analysis port for enhanced relevance scoring
 
     Returns:
         Configured EnrichContextUseCase
@@ -427,6 +501,7 @@ def create_enrich_context_use_case(
         github_client=github_client,
         osint_client=osint_client,
         vector_store=vector_store,
+        llm_analysis=llm_analysis,
     )
 
 

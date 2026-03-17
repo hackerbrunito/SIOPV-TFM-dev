@@ -21,6 +21,7 @@ if TYPE_CHECKING:
         OSINTSearchClientPort,
         VectorStorePort,
     )
+    from siopv.application.ports.llm_analysis import LLMAnalysisPort
 
 logger = structlog.get_logger(__name__)
 
@@ -33,6 +34,7 @@ async def enrich_node(
     github_client: GitHubAdvisoryClientPort | None = None,
     osint_client: OSINTSearchClientPort | None = None,
     vector_store: VectorStorePort | None = None,
+    llm_analysis: LLMAnalysisPort | None = None,
     max_concurrent: int = 5,
 ) -> dict[str, object]:
     """Execute enrichment phase as a LangGraph node.
@@ -47,6 +49,7 @@ async def enrich_node(
         github_client: GitHub Advisory client (optional, uses default if None)
         osint_client: OSINT search client (optional, uses default if None)
         vector_store: Vector store adapter (optional, uses default if None)
+        llm_analysis: Optional LLM analysis port for enhanced relevance scoring
         max_concurrent: Maximum concurrent enrichment requests
 
     Returns:
@@ -77,6 +80,7 @@ async def enrich_node(
             github_client=github_client,
             osint_client=osint_client,
             vector_store=vector_store,
+            llm_analysis=llm_analysis,
             max_concurrent=max_concurrent,
         )
 
@@ -108,6 +112,7 @@ async def _run_enrichment(
     github_client: GitHubAdvisoryClientPort | None,
     osint_client: OSINTSearchClientPort | None,
     vector_store: VectorStorePort | None,
+    llm_analysis: LLMAnalysisPort | None,
     max_concurrent: int,
 ) -> dict[str, object]:
     """Run async enrichment using EnrichContextUseCase.
@@ -119,14 +124,16 @@ async def _run_enrichment(
         github_client: GitHub Advisory client
         osint_client: OSINT search client
         vector_store: Vector store adapter
+        llm_analysis: Optional LLM analysis port
         max_concurrent: Maximum concurrent requests
 
     Returns:
         Dictionary mapping CVE ID to EnrichmentData
     """
 
-    # If clients are not provided, return minimal enrichments
+    # If required clients are not provided, return minimal enrichments
     # This allows the node to work in test/mock scenarios
+    # Note: llm_analysis is intentionally excluded — it is an optional enhancement
     if any(
         client is None
         for client in [nvd_client, epss_client, github_client, osint_client, vector_store]
@@ -144,6 +151,7 @@ async def _run_enrichment(
         github_client=github_client,  # type: ignore[arg-type]
         osint_client=osint_client,  # type: ignore[arg-type]
         vector_store=vector_store,  # type: ignore[arg-type]
+        llm_analysis=llm_analysis,
     )
 
     # list[object] is list[VulnerabilityRecord] at runtime

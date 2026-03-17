@@ -141,3 +141,100 @@ class TestCreateMinimalEnrichments:
         result = _create_minimal_enrichments([])
 
         assert result == {}
+
+
+class TestEnrichNodeLLMIntegration:
+    """Tests for LLM analysis integration in enrich_node."""
+
+    @pytest.fixture
+    def mock_vulnerability(self) -> MagicMock:
+        """Create a mock VulnerabilityRecord."""
+        mock = MagicMock(spec=VulnerabilityRecord)
+        mock.cve_id = CVEId(value="CVE-2024-1234")
+        mock.severity = "HIGH"
+        return mock
+
+    async def test_enrich_node_passes_llm_to_run_enrichment(self, mock_vulnerability: MagicMock):
+        """Test that enrich_node passes llm_analysis to _run_enrichment."""
+        state = {
+            **create_initial_state(),
+            "vulnerabilities": [mock_vulnerability],
+        }
+
+        mock_llm = MagicMock()
+        mock_enrichment = EnrichmentData(
+            cve_id="CVE-2024-1234",
+            relevance_score=0.95,
+            llm_summary="Test summary",
+        )
+
+        with patch(
+            "siopv.application.orchestration.nodes.enrich_node._run_enrichment",
+            new_callable=AsyncMock,
+        ) as mock_run:
+            mock_run.return_value = {"CVE-2024-1234": mock_enrichment}
+
+            mock_clients = {
+                "nvd_client": MagicMock(),
+                "epss_client": MagicMock(),
+                "github_client": MagicMock(),
+                "osint_client": MagicMock(),
+                "vector_store": MagicMock(),
+            }
+            result = await enrich_node(state, **mock_clients, llm_analysis=mock_llm)
+
+        assert result["enrichments"]["CVE-2024-1234"] == mock_enrichment
+        # Verify llm_analysis was passed through
+        call_kwargs = mock_run.call_args[1]
+        assert call_kwargs["llm_analysis"] is mock_llm
+
+    async def test_enrich_node_without_llm_backward_compatible(self, mock_vulnerability: MagicMock):
+        """Test enrich_node works without llm_analysis (backward compatible)."""
+        state = {
+            **create_initial_state(),
+            "vulnerabilities": [mock_vulnerability],
+        }
+
+        mock_enrichment = EnrichmentData(
+            cve_id="CVE-2024-1234",
+            relevance_score=0.8,
+        )
+
+        with patch(
+            "siopv.application.orchestration.nodes.enrich_node._run_enrichment",
+            new_callable=AsyncMock,
+        ) as mock_run:
+            mock_run.return_value = {"CVE-2024-1234": mock_enrichment}
+
+            mock_clients = {
+                "nvd_client": MagicMock(),
+                "epss_client": MagicMock(),
+                "github_client": MagicMock(),
+                "osint_client": MagicMock(),
+                "vector_store": MagicMock(),
+            }
+            result = await enrich_node(state, **mock_clients)
+
+        assert result["enrichments"]["CVE-2024-1234"] == mock_enrichment
+        # llm_analysis should default to None
+        call_kwargs = mock_run.call_args[1]
+        assert call_kwargs["llm_analysis"] is None
+
+    async def test_enrich_node_missing_clients_ignores_llm(self, mock_vulnerability: MagicMock):
+        """Test that missing required clients triggers minimal enrichment even with LLM."""
+        state = {
+            **create_initial_state(),
+            "vulnerabilities": [mock_vulnerability],
+        }
+
+        mock_llm = MagicMock()
+
+        # Only provide llm_analysis, no required clients
+        result = await enrich_node(state, llm_analysis=mock_llm)
+
+        assert result["current_node"] == "enrich"
+        assert "CVE-2024-1234" in result["enrichments"]
+        # Should be minimal enrichment (0.5 default), LLM not used
+        enrichment = result["enrichments"]["CVE-2024-1234"]
+        assert isinstance(enrichment, EnrichmentData)
+        assert enrichment.relevance_score == 0.5

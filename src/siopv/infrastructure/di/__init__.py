@@ -47,6 +47,17 @@ from siopv.infrastructure.di.dlp import (
     get_dlp_port,
     get_dual_layer_dlp_port,
 )
+from siopv.infrastructure.di.enrichment import (
+    build_epss_client,
+    build_github_client,
+    build_llm_analysis,
+    build_nvd_client,
+    build_osint_client,
+    build_vector_store,
+)
+from siopv.infrastructure.di.ml import (
+    build_classifier,
+)
 from siopv.infrastructure.di.output import (
     build_jira_adapter,
     build_metrics_exporter,
@@ -54,9 +65,16 @@ from siopv.infrastructure.di.output import (
 )
 
 __all__ = [
+    "build_classifier",
+    "build_epss_client",
+    "build_github_client",
     "build_jira_adapter",
+    "build_llm_analysis",
     "build_metrics_exporter",
+    "build_nvd_client",
+    "build_osint_client",
     "build_pdf_adapter",
+    "build_vector_store",
     "create_authorization_adapter",
     "create_oidc_adapter",
     "create_oidc_middleware",

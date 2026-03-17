@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from siopv.application.orchestration.nodes.classify_node import (
     _create_mock_classifications,
-    _estimate_llm_confidence,
+    _estimate_llm_confidence_fallback,
     classify_node,
 )
 from siopv.application.orchestration.state import create_initial_state
@@ -51,17 +51,19 @@ class TestClassifyNode:
 
         return classifier
 
-    def test_classify_node_with_no_vulnerabilities(self):
+    @pytest.mark.asyncio
+    async def test_classify_node_with_no_vulnerabilities(self):
         """Test classify node skips when no vulnerabilities."""
         state = create_initial_state()
 
-        result = classify_node(state)
+        result = await classify_node(state)
 
         assert result["classifications"] == {}
         assert result["llm_confidence"] == {}
         assert result["current_node"] == "classify"
 
-    def test_classify_node_without_classifier_uses_mock(self, mock_vulnerability: MagicMock):
+    @pytest.mark.asyncio
+    async def test_classify_node_without_classifier_uses_mock(self, mock_vulnerability: MagicMock):
         """Test classify node uses mock classifications when no classifier."""
         state = {
             **create_initial_state(),
@@ -69,7 +71,7 @@ class TestClassifyNode:
             "enrichments": {},
         }
 
-        result = classify_node(state, classifier=None)
+        result = await classify_node(state, classifier=None)
 
         assert result["current_node"] == "classify"
         assert "classifications" in result
@@ -77,62 +79,121 @@ class TestClassifyNode:
         assert "llm_confidence" in result
         assert "CVE-2024-1234" in result["llm_confidence"]
 
-    def test_classify_node_success_with_classifier(
+    @pytest.mark.asyncio
+    async def test_classify_node_success_with_classifier(
         self,
         mock_vulnerability: MagicMock,
         mock_enrichment: EnrichmentData,
         mock_classifier: MagicMock,
     ):
-        """Test classify node success with ML classifier.
-
-        Note: Testing the full flow requires a properly configured classifier.
-        This test verifies the node handles a mock classifier correctly.
-        """
+        """Test classify node success with ML classifier."""
         state = {
             **create_initial_state(),
             "vulnerabilities": [mock_vulnerability],
             "enrichments": {"CVE-2024-1234": mock_enrichment},
         }
 
-        # When classifier is provided but mock isn't properly configured,
-        # the node will use mock classifications internally or fail gracefully
-        result = classify_node(state, classifier=mock_classifier)
+        result = await classify_node(state, classifier=mock_classifier)
 
         assert result["current_node"] == "classify"
-        # Result should contain classifications key (may be empty on error)
         assert "classifications" in result or "errors" in result
 
-    def test_classify_node_exception_handling(self, mock_vulnerability: MagicMock):
-        """Test classify node handles exceptions gracefully.
-
-        When the classifier raises an exception, the node should catch it
-        and return an error in the state.
-        """
+    @pytest.mark.asyncio
+    async def test_classify_node_exception_handling(self, mock_vulnerability: MagicMock):
+        """Test classify node handles exceptions gracefully."""
         state = {
             **create_initial_state(),
             "vulnerabilities": [mock_vulnerability],
             "enrichments": {},
         }
 
-        # Create a classifier that raises an exception on predict
         failing_classifier = MagicMock()
         failing_classifier.is_loaded.return_value = True
         failing_classifier.predict.side_effect = RuntimeError("ML model error")
 
-        # The node should handle the exception gracefully
-        result = classify_node(state, classifier=failing_classifier)
+        result = await classify_node(state, classifier=failing_classifier)
 
-        # When using a failing classifier, the node should catch the error
-        # and return an appropriate error state or fall back to mock classifications
         assert result["current_node"] == "classify"
-        # Either we get an error or the node falls back to mock classifications
         has_error = "errors" in result and len(result["errors"]) > 0
         has_classifications = len(result.get("classifications", {})) > 0
         assert has_error or has_classifications
 
+    @pytest.mark.asyncio
+    async def test_classify_node_with_llm_analysis(
+        self,
+        mock_vulnerability: MagicMock,
+        mock_enrichment: EnrichmentData,
+        mock_classifier: MagicMock,
+    ):
+        """Test classify node uses real LLM confidence when llm_analysis is provided."""
+        mock_llm = AsyncMock()
+        mock_llm.evaluate_confidence.return_value = 0.92
 
-class TestEstimateLLMConfidence:
-    """Tests for _estimate_llm_confidence function."""
+        state = {
+            **create_initial_state(),
+            "vulnerabilities": [mock_vulnerability],
+            "enrichments": {"CVE-2024-1234": mock_enrichment},
+        }
+
+        result = await classify_node(state, classifier=mock_classifier, llm_analysis=mock_llm)
+
+        assert result["current_node"] == "classify"
+        # If classification succeeded, LLM confidence should have been called
+        if "CVE-2024-1234" in result.get("llm_confidence", {}):
+            assert result["llm_confidence"]["CVE-2024-1234"] == 0.92
+            mock_llm.evaluate_confidence.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_classify_node_llm_fallback_on_error(
+        self,
+        mock_vulnerability: MagicMock,
+        mock_enrichment: EnrichmentData,
+        mock_classifier: MagicMock,
+    ):
+        """Test classify node falls back to heuristic when LLM call fails."""
+        mock_llm = AsyncMock()
+        mock_llm.evaluate_confidence.side_effect = RuntimeError("LLM API error")
+
+        state = {
+            **create_initial_state(),
+            "vulnerabilities": [mock_vulnerability],
+            "enrichments": {"CVE-2024-1234": mock_enrichment},
+        }
+
+        result = await classify_node(state, classifier=mock_classifier, llm_analysis=mock_llm)
+
+        assert result["current_node"] == "classify"
+        # Should still have confidence values (from fallback heuristic)
+        if "CVE-2024-1234" in result.get("llm_confidence", {}):
+            confidence = result["llm_confidence"]["CVE-2024-1234"]
+            assert 0.0 <= confidence <= 1.0
+            # Should NOT be the LLM value (since it failed)
+            assert confidence != 0.92
+
+    @pytest.mark.asyncio
+    async def test_classify_node_without_llm_uses_fallback(
+        self,
+        mock_vulnerability: MagicMock,
+        mock_enrichment: EnrichmentData,
+        mock_classifier: MagicMock,
+    ):
+        """Test classify node uses heuristic fallback when no llm_analysis."""
+        state = {
+            **create_initial_state(),
+            "vulnerabilities": [mock_vulnerability],
+            "enrichments": {"CVE-2024-1234": mock_enrichment},
+        }
+
+        result = await classify_node(state, classifier=mock_classifier, llm_analysis=None)
+
+        assert result["current_node"] == "classify"
+        if "CVE-2024-1234" in result.get("llm_confidence", {}):
+            confidence = result["llm_confidence"]["CVE-2024-1234"]
+            assert 0.0 <= confidence <= 1.0
+
+
+class TestEstimateLLMConfidenceFallback:
+    """Tests for _estimate_llm_confidence_fallback function."""
 
     @pytest.fixture
     def mock_risk_score(self) -> RiskScore:
@@ -159,10 +220,9 @@ class TestEstimateLLMConfidence:
             risk_score=mock_risk_score,
         )
 
-        confidence = _estimate_llm_confidence(classification, mock_enrichment)
+        confidence = _estimate_llm_confidence_fallback(classification, mock_enrichment)
 
         assert 0.0 <= confidence <= 1.0
-        # With high risk probability and high relevance, confidence should be high
         assert confidence > 0.7
 
     def test_estimate_llm_confidence_without_enrichment(self, mock_risk_score: RiskScore):
@@ -172,10 +232,9 @@ class TestEstimateLLMConfidence:
             risk_score=mock_risk_score,
         )
 
-        confidence = _estimate_llm_confidence(classification, None)
+        confidence = _estimate_llm_confidence_fallback(classification, None)
 
         assert 0.0 <= confidence <= 1.0
-        # Still should have reasonable confidence with valid score
         assert confidence >= 0.7
 
     def test_estimate_llm_confidence_no_risk_score(self):
@@ -185,9 +244,8 @@ class TestEstimateLLMConfidence:
             risk_score=None,
         )
 
-        confidence = _estimate_llm_confidence(classification, None)
+        confidence = _estimate_llm_confidence_fallback(classification, None)
 
-        # Should return default uncertainty
         assert confidence == 0.5
 
 
@@ -219,7 +277,6 @@ class TestCreateMockClassifications:
         assert len(classifications) == 4
         assert len(llm_confidence) == 4
 
-        # Check severity mapping
         critical_class = classifications["CVE-2024-1111"]
         assert critical_class.risk_score.risk_probability == 0.9
 
@@ -241,5 +298,4 @@ class TestCreateMockClassifications:
         classifications, _llm_confidence = _create_mock_classifications([vuln], {})
 
         assert "CVE-2024-9999" in classifications
-        # Unknown should default to 0.4
         assert classifications["CVE-2024-9999"].risk_score.risk_probability == 0.4
