@@ -209,6 +209,18 @@ Multiple independent Bash commands
 
 <!-- cache_control: end -->
 
+### Pre-Write Hardcoding Prevention
+
+Before writing or modifying any code, apply this check:
+
+1. Identify every new or changed value in your code that is: a numeric literal, a path, a URL, a timeout, a threshold, a rate limit, a credential, or a model identifier.
+2. For each such value, check if `settings.py` has a corresponding field.
+3. If `settings.py` LACKS the field: add the field to `settings.py` FIRST, add the env var to `.env.example`, then use the settings value in code via DI injection.
+4. If `settings.py` HAS the field: use it. Do not redefine or shadow it.
+5. NEVER introduce a hardcoded value with the intent to "wire it later". Wire it now or don't write the code.
+
+This applies to ALL code changes: new files, bug fixes, refactors, test utilities (except test fixture values).
+
 ## Report Persistence
 
 Save report after generation.
@@ -233,6 +245,34 @@ Examples:
 
 ### Create Directory if Needed
 If the directory doesn't exist, create it before writing.
+
+### Hardcoding Check
+
+Scan all files in scope for hardcoded configurable values. Flag each violation found.
+
+**What counts as hardcoded:**
+- Numeric literals used as thresholds, timeouts, rate limits, sizes, delays, or ports
+- Hardcoded file paths or URLs (except in test fixtures)
+- Hardcoded API model identifiers (e.g., `"claude-sonnet-4-6"` as a string literal in code)
+- Dataclass field defaults that represent configurable values (e.g., `base_threshold: float = 0.3`)
+- Module-level constants that represent configurable values (e.g., `MAX_RETRIES = 3`)
+- Constructor parameter defaults that represent configurable values (e.g., `max_queue_size: int = 100`)
+
+**What is NOT hardcoded (leave alone):**
+- Structural constants: HTTP status codes (`200`, `404`), mathematical constants, protocol-defined values
+- Internal architecture: module names, class names, import paths within the project
+- Relative paths that work after `git clone` (but check if they're already in `settings.py` — if so, code should read from settings)
+- Log format strings, structlog field names
+- Test fixture values (hardcoded values in test files used for assertions)
+- Specification-defined constants where the MEANING is fixed (e.g., "level 3 = auto-approved")
+- Type annotations and collection defaults (e.g., `list[str] = field(default_factory=list)`)
+- Enum/literal allowed values (e.g., `Literal["development", "staging", "production"]`)
+
+**Grey area (evaluate, don't auto-flag):**
+- LLM prompt templates in adapters — tightly coupled to code logic, OK as code unless clearly needs externalizing
+- Fail-open default values (e.g., `DEFAULT_CONFIDENCE = 0.5`) — design decisions, not deployment parameters
+
+**Report format per violation:** file, line number, hardcoded value, suggested `settings.py` field name.
 
 ## Report Format
 <!-- cache_control: start -->

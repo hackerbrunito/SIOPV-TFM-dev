@@ -289,19 +289,17 @@ class TestOutputDirectory:
 
         assert output_dir.exists()
 
-    def test_env_var_output_dir(self, tmp_path: Path) -> None:
-        """SIOPV_OUTPUT_DIR env var sets the output directory."""
-        env_dir = str(tmp_path / "env_output")
-        with patch.dict("os.environ", {"SIOPV_OUTPUT_DIR": env_dir}):
-            exporter = MetricsExporterAdapter()
-            assert str(exporter._output_dir) == env_dir
+    def test_output_dir_from_constructor(self, tmp_path: Path) -> None:
+        """output_dir constructor parameter sets the output directory."""
+        output_dir = tmp_path / "custom_output"
+        exporter = MetricsExporterAdapter(output_dir=output_dir)
+        assert exporter._output_dir == output_dir
 
-    def test_explicit_dir_overrides_env(self, tmp_path: Path) -> None:
-        """Explicit output_dir parameter overrides SIOPV_OUTPUT_DIR."""
+    def test_output_dir_accepts_string(self, tmp_path: Path) -> None:
+        """output_dir accepts string paths (converted to Path internally)."""
         explicit = tmp_path / "explicit"
-        with patch.dict("os.environ", {"SIOPV_OUTPUT_DIR": "/some/env/path"}):
-            exporter = MetricsExporterAdapter(output_dir=explicit)
-            assert exporter._output_dir == explicit
+        exporter = MetricsExporterAdapter(output_dir=str(explicit))
+        assert exporter._output_dir == explicit
 
 
 # === Atomic Write Tests ===
@@ -469,16 +467,12 @@ class TestSerializeDefault:
 
 
 class TestDefaultOutputDir:
-    """Tests for default output dir when no env var and no explicit dir."""
+    """Tests for output_dir as required constructor parameter."""
 
-    def test_default_output_dir_no_env_no_explicit(self) -> None:
-        with patch.dict("os.environ", {}, clear=True):
-            # Remove SIOPV_OUTPUT_DIR if present
-            import os
-
-            os.environ.pop("SIOPV_OUTPUT_DIR", None)
-            exporter = MetricsExporterAdapter()
-            assert exporter._output_dir == Path("./output")
+    def test_output_dir_is_required(self) -> None:
+        """output_dir must be provided (injected via DI from settings)."""
+        with pytest.raises(TypeError, match="output_dir"):
+            MetricsExporterAdapter()  # type: ignore[call-arg]
 
 
 # === Build State Dict Tests ===

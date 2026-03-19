@@ -20,7 +20,6 @@ from fpdf import FPDF
 from fpdf.fonts import FontFace
 
 from siopv.application.ports.pdf_generator import PdfGeneratorPort
-from siopv.infrastructure.config.settings import get_settings
 
 if TYPE_CHECKING:
     from siopv.application.orchestration.state import PipelineState
@@ -123,16 +122,19 @@ def _render_lime_chart(
 class _SiopvPdf(FPDF):
     """Custom FPDF subclass with SIOPV header/footer."""
 
-    def __init__(self, run_id: str) -> None:
+    def __init__(self, run_id: str, app_name: str = "SIOPV") -> None:
         super().__init__(orientation="P", unit="mm", format="A4")
         self._run_id = run_id
+        self._app_name = app_name
         self.set_margins(_MARGIN_MM, _MARGIN_MM, _MARGIN_MM)
         self.set_auto_page_break(auto=True, margin=15)
 
     def header(self) -> None:
         self.set_font("Helvetica", "B", 8)
         self.set_text_color(*_COLOR_MID_GRAY)
-        self.cell(0, 5, "SIOPV Vulnerability Audit Report", new_x="LMARGIN", new_y="NEXT")
+        self.cell(
+            0, 5, f"{self._app_name} Vulnerability Audit Report", new_x="LMARGIN", new_y="NEXT"
+        )
         self.set_draw_color(*_COLOR_LIGHT_GRAY)
         self.line(_MARGIN_MM, self.get_y(), _MARGIN_MM + _PAGE_WIDTH_MM, self.get_y())
         self.ln(3)
@@ -182,6 +184,17 @@ class Fpdf2Adapter(PdfGeneratorPort):
     Reads pipeline state and renders an 8-section vulnerability audit PDF.
     """
 
+    def __init__(
+        self,
+        *,
+        pdf_include_cot: bool = False,
+        model_path: Path | None = None,
+        app_name: str = "SIOPV",
+    ) -> None:
+        self._pdf_include_cot = pdf_include_cot
+        self._model_path = model_path
+        self._app_name = app_name
+
     def generate(self, state: PipelineState, output_path: str) -> str:
         """Generate the PDF audit report.
 
@@ -192,7 +205,6 @@ class Fpdf2Adapter(PdfGeneratorPort):
         Returns:
             Absolute path to the generated PDF file.
         """
-        settings = get_settings()
         output_dir = Path(output_path).parent
         output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -201,7 +213,7 @@ class Fpdf2Adapter(PdfGeneratorPort):
         filename = f"audit-report-{thread_id}-{timestamp}.pdf"
         dest = output_dir / filename
 
-        pdf = _SiopvPdf(run_id=thread_id)
+        pdf = _SiopvPdf(run_id=thread_id, app_name=self._app_name)
         pdf.alias_nb_pages()
         pdf.add_page()
 
@@ -210,16 +222,15 @@ class Fpdf2Adapter(PdfGeneratorPort):
         classifications = state.get("classifications", {})
         escalated_cves = state.get("escalated_cves", [])
         dlp_result = state.get("dlp_result")
-        include_cot = getattr(settings, "pdf_include_cot", False)
 
         self._section_executive_summary(pdf, state, vulnerabilities, escalated_cves)
         self._section_vulnerability_index(pdf, vulnerabilities, enrichments, classifications)
         self._section_detail_cards(pdf, vulnerabilities, enrichments, classifications, dlp_result)
         self._section_hitl_log(pdf, state, escalated_cves)
-        self._section_ml_transparency(pdf, classifications, settings)
+        self._section_ml_transparency(pdf, classifications)
         self._section_dlp_audit(pdf, dlp_result)
         self._section_remediation_timeline(pdf, vulnerabilities, classifications)
-        if include_cot:
+        if self._pdf_include_cot:
             self._section_cot_appendix(pdf, state)
 
         pdf.output(str(dest))
@@ -246,7 +257,12 @@ class Fpdf2Adapter(PdfGeneratorPort):
         pdf.set_font("Helvetica", "B", _HEADER_FONT_SIZE)
         pdf.set_text_color(*_COLOR_BLACK)
         pdf.cell(
-            0, 10, "SIOPV Vulnerability Audit Report", align="C", new_x="LMARGIN", new_y="NEXT"
+            0,
+            10,
+            f"{self._app_name} Vulnerability Audit Report",
+            align="C",
+            new_x="LMARGIN",
+            new_y="NEXT",
         )
         pdf.ln(2)
 
@@ -257,7 +273,7 @@ class Fpdf2Adapter(PdfGeneratorPort):
 
         pdf.kv_line("Run ID", thread_id)
         pdf.kv_line("Generated", timestamp_now)
-        pdf.kv_line("Pipeline Version", "SIOPV v1.0 - Phase 8")
+        pdf.kv_line("Pipeline Version", f"{self._app_name} v1.0 - Phase 8")
         pdf.kv_line("Vulnerabilities Processed", str(len(vulnerabilities)))
 
         # Severity breakdown
@@ -607,17 +623,14 @@ class Fpdf2Adapter(PdfGeneratorPort):
         self,
         pdf: _SiopvPdf,
         classifications: dict[str, Any],
-        settings: Any,
     ) -> None:
         pdf.section_title("5. ML Model Transparency")
         pdf.body_font()
 
         # Model version
         model_version = "1.0.0"
-        if hasattr(settings, "model_path"):
-            model_version = str(settings.model_path.stem).replace(
-                "xgboost_risk_model", "XGBoost v1.0"
-            )
+        if self._model_path is not None:
+            model_version = str(self._model_path.stem).replace("xgboost_risk_model", "XGBoost v1.0")
         pdf.kv_line("Model", "XGBoost Risk Classifier")
         pdf.kv_line("Version", model_version)
 

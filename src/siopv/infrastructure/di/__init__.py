@@ -4,6 +4,15 @@ Provides factory functions for creating and configuring application components
 that implement hexagonal architecture ports. This is the central place for
 component wiring.
 
+Sub-port factories (``create_oidc_adapter``, ``create_oidc_middleware``,
+``get_oidc_authentication_port``, ``create_authorization_adapter``,
+``get_authorization_model_port``, ``get_authorization_store_port``,
+``get_dlp_port``) are public API for integration testing and component-level
+wiring. The CLI entry point uses higher-level wrappers (``get_authorization_port``,
+``get_dual_layer_dlp_port``), but the granular factories are intentionally
+exported for tests that need to construct individual Phase 5/6 components
+without full pipeline wiring.
+
 Usage:
     from siopv.infrastructure.di import (
         get_authorization_port,
@@ -59,6 +68,11 @@ from siopv.infrastructure.di.ml import (
     build_classifier,
     build_trivy_parser,
 )
+from siopv.infrastructure.di.orchestration import (
+    EscalationConfig,
+    build_escalation_config,
+    build_threshold_config,
+)
 from siopv.infrastructure.di.output import (
     build_jira_adapter,
     build_metrics_exporter,
@@ -66,8 +80,10 @@ from siopv.infrastructure.di.output import (
 )
 
 __all__ = [
+    "EscalationConfig",
     "build_classifier",
     "build_epss_client",
+    "build_escalation_config",
     "build_github_client",
     "build_jira_adapter",
     "build_llm_analysis",
@@ -75,6 +91,7 @@ __all__ = [
     "build_nvd_client",
     "build_osint_client",
     "build_pdf_adapter",
+    "build_threshold_config",
     "build_trivy_parser",
     "build_vector_store",
     "create_authorization_adapter",

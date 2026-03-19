@@ -14,7 +14,18 @@ from siopv.application.orchestration.nodes.escalate_node import (
 )
 from siopv.application.orchestration.state import create_initial_state
 from siopv.application.use_cases.classify_risk import ClassificationResult
+from siopv.domain.value_objects.discrepancy import ThresholdConfig
 from siopv.domain.value_objects.risk_score import RiskScore
+
+_DEFAULT_THRESHOLD_CONFIG = ThresholdConfig(
+    base_threshold=0.3,
+    confidence_floor=0.7,
+    percentile=90,
+    history_size=500,
+    default_confidence=0.5,
+)
+_DEFAULT_LEVEL_THRESHOLDS: tuple[tuple[int, int], ...] = ((24, 3), (8, 2), (4, 1))
+_DEFAULT_REVIEW_DEADLINE_HOURS = 24
 
 
 class TestEscalateNode:
@@ -54,7 +65,12 @@ class TestEscalateNode:
         """Test escalate node with no classifications returns escalation_required=False."""
         state = create_initial_state()
 
-        result = escalate_node(state)
+        result = escalate_node(
+            state,
+            level_thresholds=_DEFAULT_LEVEL_THRESHOLDS,
+            review_deadline_hours=_DEFAULT_REVIEW_DEADLINE_HOURS,
+            threshold_config=_DEFAULT_THRESHOLD_CONFIG,
+        )
 
         assert result["escalated_cves"] == []
         assert result["escalation_required"] is False
@@ -70,7 +86,12 @@ class TestEscalateNode:
             "llm_confidence": {"CVE-2024-1111": 0.85},
         }
 
-        result = escalate_node(state)
+        result = escalate_node(
+            state,
+            level_thresholds=_DEFAULT_LEVEL_THRESHOLDS,
+            review_deadline_hours=_DEFAULT_REVIEW_DEADLINE_HOURS,
+            threshold_config=_DEFAULT_THRESHOLD_CONFIG,
+        )
 
         assert result["current_node"] == "escalate"
         assert result["escalation_required"] is False
@@ -91,7 +112,12 @@ class TestEscalateNode:
             "llm_confidence": {"CVE-2024-2222": 0.4},
         }
 
-        result = escalate_node(state)
+        result = escalate_node(
+            state,
+            level_thresholds=_DEFAULT_LEVEL_THRESHOLDS,
+            review_deadline_hours=_DEFAULT_REVIEW_DEADLINE_HOURS,
+            threshold_config=_DEFAULT_THRESHOLD_CONFIG,
+        )
 
         mock_interrupt.assert_called_once()  # type: ignore[union-attr]
         assert result["escalation_required"] is True
@@ -113,7 +139,12 @@ class TestEscalateNode:
             "llm_confidence": {"CVE-2024-2222": 0.4},
         }
 
-        escalate_node(state)
+        escalate_node(
+            state,
+            level_thresholds=_DEFAULT_LEVEL_THRESHOLDS,
+            review_deadline_hours=_DEFAULT_REVIEW_DEADLINE_HOURS,
+            threshold_config=_DEFAULT_THRESHOLD_CONFIG,
+        )
 
         call_args = mock_interrupt.call_args  # type: ignore[union-attr]
         escalation_data = call_args[0][0]
@@ -142,7 +173,12 @@ class TestEscalateNode:
             "llm_confidence": {"CVE-2024-2222": 0.4},
         }
 
-        result = escalate_node(state)
+        result = escalate_node(
+            state,
+            level_thresholds=_DEFAULT_LEVEL_THRESHOLDS,
+            review_deadline_hours=_DEFAULT_REVIEW_DEADLINE_HOURS,
+            threshold_config=_DEFAULT_THRESHOLD_CONFIG,
+        )
 
         assert result["human_decision"] == "approve"
         assert result["human_modified_score"] is None
@@ -163,7 +199,12 @@ class TestEscalateNode:
             "llm_confidence": {"CVE-2024-2222": 0.4},
         }
 
-        result = escalate_node(state)
+        result = escalate_node(
+            state,
+            level_thresholds=_DEFAULT_LEVEL_THRESHOLDS,
+            review_deadline_hours=_DEFAULT_REVIEW_DEADLINE_HOURS,
+            threshold_config=_DEFAULT_THRESHOLD_CONFIG,
+        )
 
         assert result["human_decision"] == "reject"
 
@@ -186,7 +227,12 @@ class TestEscalateNode:
             "llm_confidence": {"CVE-2024-2222": 0.4},
         }
 
-        result = escalate_node(state)
+        result = escalate_node(
+            state,
+            level_thresholds=_DEFAULT_LEVEL_THRESHOLDS,
+            review_deadline_hours=_DEFAULT_REVIEW_DEADLINE_HOURS,
+            threshold_config=_DEFAULT_THRESHOLD_CONFIG,
+        )
 
         assert result["human_decision"] == "modify"
         assert result["human_modified_score"] == 0.75
@@ -207,7 +253,12 @@ class TestEscalateNode:
             "llm_confidence": {"CVE-2024-2222": 0.4},
         }
 
-        result = escalate_node(state)
+        result = escalate_node(
+            state,
+            level_thresholds=_DEFAULT_LEVEL_THRESHOLDS,
+            review_deadline_hours=_DEFAULT_REVIEW_DEADLINE_HOURS,
+            threshold_config=_DEFAULT_THRESHOLD_CONFIG,
+        )
 
         assert result["escalation_timestamp"] is not None
         assert result["review_deadline"] is not None
@@ -233,7 +284,12 @@ class TestEscalateNode:
             "llm_confidence": {"CVE-2024-3333": 0.8},
         }
 
-        result = escalate_node(state)
+        result = escalate_node(
+            state,
+            level_thresholds=_DEFAULT_LEVEL_THRESHOLDS,
+            review_deadline_hours=_DEFAULT_REVIEW_DEADLINE_HOURS,
+            threshold_config=_DEFAULT_THRESHOLD_CONFIG,
+        )
 
         assert result["escalation_required"] is True
         assert "CVE-2024-3333" in result["escalated_cves"]
@@ -254,7 +310,12 @@ class TestEscalateNode:
             "llm_confidence": {"CVE-2024-2222": 0.4},
         }
 
-        result = escalate_node(state)
+        result = escalate_node(
+            state,
+            level_thresholds=_DEFAULT_LEVEL_THRESHOLDS,
+            review_deadline_hours=_DEFAULT_REVIEW_DEADLINE_HOURS,
+            threshold_config=_DEFAULT_THRESHOLD_CONFIG,
+        )
 
         assert result["human_decision"] == "approve"
         assert result["human_modified_score"] is None
@@ -269,7 +330,7 @@ class TestCalculateEscalationLevel:
         now = datetime.now(UTC)
         timestamp = now.isoformat()
 
-        level = _calculate_escalation_level(timestamp)
+        level = _calculate_escalation_level(timestamp, level_thresholds=_DEFAULT_LEVEL_THRESHOLDS)
 
         assert level == 0
 
@@ -278,7 +339,7 @@ class TestCalculateEscalationLevel:
         now = datetime.now(UTC)
         timestamp = (now - timedelta(hours=3, minutes=59)).isoformat()
 
-        level = _calculate_escalation_level(timestamp)
+        level = _calculate_escalation_level(timestamp, level_thresholds=_DEFAULT_LEVEL_THRESHOLDS)
 
         assert level == 0
 
@@ -287,7 +348,7 @@ class TestCalculateEscalationLevel:
         now = datetime.now(UTC)
         timestamp = (now - timedelta(hours=5)).isoformat()
 
-        level = _calculate_escalation_level(timestamp)
+        level = _calculate_escalation_level(timestamp, level_thresholds=_DEFAULT_LEVEL_THRESHOLDS)
 
         assert level == 1
 
@@ -296,7 +357,7 @@ class TestCalculateEscalationLevel:
         now = datetime.now(UTC)
         timestamp = (now - timedelta(hours=9)).isoformat()
 
-        level = _calculate_escalation_level(timestamp)
+        level = _calculate_escalation_level(timestamp, level_thresholds=_DEFAULT_LEVEL_THRESHOLDS)
 
         assert level == 2
 
@@ -305,7 +366,7 @@ class TestCalculateEscalationLevel:
         now = datetime.now(UTC)
         timestamp = (now - timedelta(hours=25)).isoformat()
 
-        level = _calculate_escalation_level(timestamp)
+        level = _calculate_escalation_level(timestamp, level_thresholds=_DEFAULT_LEVEL_THRESHOLDS)
 
         assert level == 3
 
@@ -315,7 +376,7 @@ class TestCalculateEscalationLevel:
         # Slightly under 4h to stay at level 0
         timestamp = (now - timedelta(hours=4, seconds=-1)).isoformat()
 
-        level = _calculate_escalation_level(timestamp)
+        level = _calculate_escalation_level(timestamp, level_thresholds=_DEFAULT_LEVEL_THRESHOLDS)
 
         assert level == 0
 
@@ -324,7 +385,7 @@ class TestCalculateEscalationLevel:
         now = datetime.now(UTC)
         timestamp = (now - timedelta(hours=24, seconds=1)).isoformat()
 
-        level = _calculate_escalation_level(timestamp)
+        level = _calculate_escalation_level(timestamp, level_thresholds=_DEFAULT_LEVEL_THRESHOLDS)
 
         assert level == 3
 
@@ -439,3 +500,60 @@ class TestGetEscalationSummary:
         assert detail["cve_id"] == "CVE-2024-9999"
         assert detail["ml_score"] is None
         assert detail["discrepancy"] is None
+
+
+class TestEscalateNodeErrorBranches:
+    """Tests for uncovered error branches in escalate_node."""
+
+    def test_level_thresholds_none_raises_value_error(self) -> None:
+        """Test _calculate_escalation_level raises when level_thresholds is None."""
+        now = datetime.now(UTC)
+        with pytest.raises(ValueError, match="level_thresholds must be provided"):
+            _calculate_escalation_level(now.isoformat(), level_thresholds=None)
+
+    def test_review_deadline_hours_none_raises_value_error(self) -> None:
+        """Test escalate_node raises when review_deadline_hours is None and candidates exist."""
+        classification = ClassificationResult(
+            cve_id="CVE-2024-2222",
+            risk_score=RiskScore.from_prediction(cve_id="CVE-2024-2222", probability=0.9),
+        )
+        state = {
+            **create_initial_state(),
+            "classifications": {"CVE-2024-2222": classification},
+            "llm_confidence": {"CVE-2024-2222": 0.4},
+        }
+
+        with pytest.raises(ValueError, match="review_deadline_hours must be provided"):
+            escalate_node(
+                state,
+                level_thresholds=_DEFAULT_LEVEL_THRESHOLDS,
+                review_deadline_hours=None,
+                threshold_config=_DEFAULT_THRESHOLD_CONFIG,
+            )
+
+    def test_identify_candidates_exception_returns_empty(self) -> None:
+        """Test escalate_node returns empty escalation on internal exception."""
+        classification = ClassificationResult(
+            cve_id="CVE-2024-2222",
+            risk_score=RiskScore.from_prediction(cve_id="CVE-2024-2222", probability=0.9),
+        )
+        state = {
+            **create_initial_state(),
+            "classifications": {"CVE-2024-2222": classification},
+            "llm_confidence": {"CVE-2024-2222": 0.4},
+        }
+
+        with patch(
+            "siopv.application.orchestration.nodes.escalate_node._identify_escalation_candidates",
+            side_effect=RuntimeError("boom"),
+        ):
+            result = escalate_node(
+                state,
+                level_thresholds=_DEFAULT_LEVEL_THRESHOLDS,
+                review_deadline_hours=_DEFAULT_REVIEW_DEADLINE_HOURS,
+                threshold_config=_DEFAULT_THRESHOLD_CONFIG,
+            )
+
+        assert result["escalated_cves"] == []
+        assert result["escalation_required"] is False
+        assert any("Escalation analysis failed" in e for e in result["errors"])

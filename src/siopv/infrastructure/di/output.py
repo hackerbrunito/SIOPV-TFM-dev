@@ -46,7 +46,11 @@ def build_pdf_adapter(settings: Settings) -> PdfGeneratorPort:
     Returns:
         PdfGeneratorPort implementation backed by Fpdf2Adapter
     """
-    adapter = Fpdf2Adapter()
+    adapter = Fpdf2Adapter(
+        pdf_include_cot=settings.pdf_include_cot,
+        model_path=settings.model_path,
+        app_name=settings.app_name,
+    )
     logger.info("pdf_adapter_created", output_dir=str(settings.output_dir))
     return adapter
 

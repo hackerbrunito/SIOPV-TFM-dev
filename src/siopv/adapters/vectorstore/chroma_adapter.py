@@ -3,14 +3,19 @@
 Implements VectorStorePort for storing and querying enrichment embeddings.
 Uses hybrid persistence: SQLite for storage + LRU cache for performance.
 
+All ChromaDB synchronous I/O calls are offloaded to a thread pool via
+``run_in_executor`` to avoid blocking the async event loop.
+
 Based on Context7 ChromaDB documentation patterns.
 """
 
 from __future__ import annotations
 
+import asyncio
+import functools
 import json
 from collections import OrderedDict
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypeVar
 
 import chromadb
 import structlog
@@ -24,6 +29,8 @@ if TYPE_CHECKING:
     from siopv.infrastructure.config import Settings
 
 logger = structlog.get_logger(__name__)
+
+_T = TypeVar("_T")
 
 
 class LRUCache:
@@ -190,6 +197,18 @@ class ChromaDBAdapter(VectorStorePort):
         full_data = json.loads(metadata["full_data"])  # type: ignore[arg-type]
         return EnrichmentData.model_validate(full_data)
 
+    async def _run_sync(self, func: functools.partial[_T]) -> _T:
+        """Run a synchronous ChromaDB call in a thread pool executor.
+
+        Args:
+            func: A functools.partial wrapping the sync call
+
+        Returns:
+            The result of the sync call
+        """
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, func)
+
     async def store_enrichment(self, enrichment: EnrichmentData) -> str:
         """Store enrichment data with generated embedding.
 
@@ -202,12 +221,16 @@ class ChromaDBAdapter(VectorStorePort):
         collection = self._get_collection()
         doc = self._enrichment_to_document(enrichment)
 
-        # Upsert to handle duplicates
-        # doc values typed as object; chromadb expects str/dict at runtime
-        collection.upsert(
-            ids=[doc["id"]],  # type: ignore[list-item]
-            documents=[doc["document"]],  # type: ignore[list-item]
-            metadatas=[doc["metadata"]],  # type: ignore[list-item]
+        # Upsert to handle duplicates — offload sync I/O to thread pool
+        doc_id = str(doc["id"])
+        doc_text = str(doc["document"])
+        await self._run_sync(
+            functools.partial(
+                collection.upsert,
+                ids=[doc_id],
+                documents=[doc_text],
+                metadatas=[doc["metadata"]],  # type: ignore[list-item]
+            )
         )
 
         # Update cache
@@ -230,28 +253,31 @@ class ChromaDBAdapter(VectorStorePort):
 
         collection = self._get_collection()
 
-        ids = []
-        documents = []
-        metadatas = []
+        ids: list[str] = []
+        documents: list[str] = []
+        metadatas: list[object] = []
 
         for enrichment in enrichments:
             doc = self._enrichment_to_document(enrichment)
-            ids.append(doc["id"])
-            documents.append(doc["document"])
+            ids.append(str(doc["id"]))
+            documents.append(str(doc["document"]))
             metadatas.append(doc["metadata"])
 
             # Update cache
             self._cache.put(enrichment.cve_id, enrichment)
 
-        # Batch upsert — lists contain object but chromadb expects str/dict
-        collection.upsert(
-            ids=ids,  # type: ignore[arg-type]
-            documents=documents,  # type: ignore[arg-type]
-            metadatas=metadatas,  # type: ignore[arg-type]
+        # Batch upsert — offload sync I/O to thread pool
+        await self._run_sync(
+            functools.partial(
+                collection.upsert,
+                ids=ids,
+                documents=documents,
+                metadatas=metadatas,  # type: ignore[arg-type]
+            )
         )
 
         logger.info("chromadb_batch_stored", count=len(enrichments))
-        return ids  # type: ignore[return-value]  # list[object] is list[str] at runtime
+        return ids
 
     async def query_similar(
         self,
@@ -272,10 +298,13 @@ class ChromaDBAdapter(VectorStorePort):
         """
         collection = self._get_collection()
 
-        results = collection.query(
-            query_texts=[query_text],
-            n_results=n_results,
-            include=["metadatas", "distances"],
+        results = await self._run_sync(
+            functools.partial(
+                collection.query,
+                query_texts=[query_text],
+                n_results=n_results,
+                include=["metadatas", "distances"],
+            )
         )
 
         enrichments_with_scores = []
@@ -318,9 +347,12 @@ class ChromaDBAdapter(VectorStorePort):
 
         collection = self._get_collection()
 
-        results = collection.get(
-            ids=[cve_id],
-            include=["metadatas"],
+        results = await self._run_sync(
+            functools.partial(
+                collection.get,
+                ids=[cve_id],
+                include=["metadatas"],
+            )
         )
 
         if results["metadatas"] and results["metadatas"][0]:
@@ -350,9 +382,12 @@ class ChromaDBAdapter(VectorStorePort):
 
         collection = self._get_collection()
 
-        results = collection.get(
-            ids=[cve_id],
-            include=[],  # Don't need actual data
+        results = await self._run_sync(
+            functools.partial(
+                collection.get,
+                ids=[cve_id],
+                include=[],
+            )
         )
 
         return bool(results["ids"])
@@ -370,7 +405,7 @@ class ChromaDBAdapter(VectorStorePort):
             return False
 
         collection = self._get_collection()
-        collection.delete(ids=[cve_id])
+        await self._run_sync(functools.partial(collection.delete, ids=[cve_id]))
 
         # Remove from cache
         self._cache.remove(cve_id)
@@ -385,7 +420,7 @@ class ChromaDBAdapter(VectorStorePort):
             Number of stored documents
         """
         collection = self._get_collection()
-        return collection.count()
+        return await self._run_sync(functools.partial(collection.count))
 
     async def clear(self) -> None:
         """Clear all stored enrichments.
@@ -394,9 +429,14 @@ class ChromaDBAdapter(VectorStorePort):
         """
         client = self._get_client()
 
-        # Delete and recreate collection
+        # Delete and recreate collection — offload sync I/O to thread pool
         # client typed as object; PersistentClient has this method at runtime
-        client.delete_collection(self._collection_name)  # type: ignore[attr-defined]
+        await self._run_sync(
+            functools.partial(
+                client.delete_collection,  # type: ignore[attr-defined]
+                self._collection_name,
+            )
+        )
         self._collection = None
 
         # Clear cache

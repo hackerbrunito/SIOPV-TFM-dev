@@ -59,6 +59,16 @@ Domain logic in `calculate_batch_discrepancies()` function.
 Run `uv run pytest tests/ -x -q` — zero regression tolerance.
 Run `uv run mypy src/` — must remain 0 errors.
 
+### Pre-Write Hardcoding Prevention
+
+Before writing or modifying any code, apply this check:
+
+1. Identify every new or changed value in your code that is: a numeric literal, a path, a URL, a timeout, a threshold, a rate limit, a credential, or a model identifier.
+2. For each such value, check if `settings.py` has a corresponding field.
+3. If `settings.py` LACKS the field: add the field to `settings.py` FIRST, add the env var to `.env.example`, then use the settings value in code via DI injection.
+4. If `settings.py` HAS the field: use it. Do not redefine or shadow it.
+5. NEVER introduce a hardcoded value with the intent to "wire it later". Wire it now or don't write the code.
+
 ## Report Format
 
 Save to `.ignorar/production-reports/hex-arch-remediator/{TIMESTAMP}-hex-arch-violations-fixed.md`:

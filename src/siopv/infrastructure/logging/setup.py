@@ -13,12 +13,14 @@ import structlog
 def configure_logging(
     level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO",
     json_format: bool = False,
+    app_name: str = "SIOPV",
 ) -> None:
     """Configure structlog for the application.
 
     Args:
         level: Log level (DEBUG, INFO, WARNING, ERROR).
         json_format: If True, output JSON. If False, colored console.
+        app_name: Application name bound to every log event.
     """
     # Shared processors (no ExceptionRenderer here — ConsoleRenderer handles it natively)
     shared_processors: list[structlog.typing.Processor] = [
@@ -56,6 +58,7 @@ def configure_logging(
 
     structlog.configure(
         processors=[
+            structlog.contextvars.merge_contextvars,
             *shared_processors,
             structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
         ],
@@ -63,6 +66,10 @@ def configure_logging(
         logger_factory=structlog.stdlib.LoggerFactory(),
         cache_logger_on_first_use=True,
     )
+
+    # Bind app_name globally so every log event carries it
+    structlog.contextvars.clear_contextvars()
+    structlog.contextvars.bind_contextvars(app=app_name)
 
     # Configure stdlib logging
     formatter = structlog.stdlib.ProcessorFormatter(

@@ -22,7 +22,6 @@ from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import Command
 
 from siopv.application.orchestration.graph import (
-    DEFAULT_CHECKPOINT_DB,
     PipelineGraphBuilder,
 )
 from siopv.interfaces.dashboard.components.case_list import render_case_list
@@ -51,7 +50,9 @@ def get_db_connection() -> sqlite3.Connection:
     Returns:
         SQLite connection with WAL mode and check_same_thread disabled.
     """
-    db_path = DEFAULT_CHECKPOINT_DB
+    from siopv.infrastructure.config import get_settings  # noqa: PLC0415
+
+    db_path = get_settings().checkpoint_db_path
     conn = sqlite3.connect(str(db_path), check_same_thread=False)
     conn.execute("PRAGMA journal_mode=WAL")
     logger.info("dashboard_db_connected", db_path=str(db_path))

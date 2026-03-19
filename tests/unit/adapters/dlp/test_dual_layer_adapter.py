@@ -299,14 +299,14 @@ class TestCreateDualLayerAdapter:
 
         assert isinstance(adapter, DualLayerDLPAdapter)
 
-    def test_reads_api_key_from_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "env-key-123")
+    def test_api_key_is_required(self) -> None:
+        """api_key parameter is required — no env var fallback."""
         with (
             patch("siopv.adapters.dlp.dual_layer_adapter.PresidioAdapter") as mock_presidio_cls,
             patch("anthropic.Anthropic") as mock_anthropic,
         ):
             mock_presidio_cls.return_value = MagicMock()
             mock_anthropic.return_value = MagicMock()
-            create_dual_layer_adapter(haiku_model="claude-haiku-4-5-20251001")  # no api_key param
+            create_dual_layer_adapter("explicit-key", haiku_model="claude-haiku-4-5-20251001")
 
-        mock_anthropic.assert_called_once_with(api_key="env-key-123")
+        mock_anthropic.assert_called_once_with(api_key="explicit-key")

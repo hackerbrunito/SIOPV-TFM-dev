@@ -25,8 +25,17 @@ from siopv.infrastructure.resilience import CircuitBreakerError
 def _make_settings() -> MagicMock:
     settings = MagicMock()
     settings.epss_base_url = "https://api.first.org/data/v1/epss"
+    settings.epss_timeout_connect = 5.0
+    settings.epss_timeout_read = 15.0
+    settings.epss_timeout_write = 5.0
+    settings.epss_timeout_pool = 5.0
+    settings.epss_batch_chunk_size = 100
+    settings.epss_rate_limit_rps = 10.0
+    settings.epss_burst_size = 20
+    settings.rate_limiter_max_queue_size = 100
     settings.circuit_breaker_failure_threshold = 5
     settings.circuit_breaker_recovery_timeout = 30
+    settings.api_client_cache_max_size = 1000
     return settings
 
 

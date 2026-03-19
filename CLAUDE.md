@@ -20,26 +20,29 @@
 9. PAUSE for human approval: new phase start, destructive actions, changes to >3 modules
 10. After ALL verification agents report: present summary → wait for approval → then commit
 
+**YOU MUST** when writing or reviewing code:
+11. NEVER hardcode configurable values in code. This includes: numeric literals (thresholds, timeouts, rate limits, sizes, delays, ports), paths, URLs, credentials, and API model identifiers. ALL such values must be defined as fields in `settings.py` (read from env vars via `.env`). Dataclass defaults, module-level constants, and constructor parameter defaults are NOT exceptions — if the value could differ between environments or deployments, it belongs in `settings.py`. Violations: `base_threshold=0.3` in a dataclass, `requests=50` in a factory function, `timedelta(hours=24)` in a node. Correct: `settings.uncertainty_threshold` read via DI or `get_settings()`.
+
 ---
 
 ## SIOPV Project State
 
 | Phase | Name | Status |
 |-------|------|--------|
-| 0–6   | Setup through DLP | ✅ Complete |
-| 7     | Human-in-the-Loop (Streamlit) | ⏳ PENDING — see gating conditions |
-| 8     | Output (Jira + PDF) | ⏳ PENDING |
+| 0 | Setup | ✅ Complete |
+| 1 | Ingesta y Preprocesamiento | ✅ Complete |
+| 2 | Enriquecimiento (CRAG/RAG) | ✅ Complete |
+| 3 | Clasificación ML (XGBoost) | ✅ Complete |
+| 4 | Orquestación (LangGraph) | ✅ Complete |
+| 5 | Autorización (OpenFGA) | ✅ Complete |
+| 6 | Privacidad (DLP/Presidio) | ✅ Complete |
+| 7 | Human-in-the-Loop (Streamlit) | ✅ Complete |
+| 8 | Output (Jira + PDF) | ✅ Complete |
 
-**Graph flow:** START → authorize → ingest → dlp → enrich → classify → [escalate] → END
+**Graph flow:** START → authorize → ingest → dlp → enrich → classify → [escalate] → output → END
 **Checkpointer:** SQLite (`siopv_checkpoints.db`) — required for `interrupt()` to work
-**Metrics baseline:** 1,476 tests passing · 92.02% coverage · 0 mypy · 0 ruff errors
-
----
-
-## Phase 7 Gating Conditions
-
-✅ All gating conditions resolved (2026-03-15 remediation-hardening). Phase 7 ready to start.
-See briefing.md for key file paths and full phase status.
+**Metrics (verified 2026-03-18):** 1,782 tests passing · 92% coverage · 3 mypy (pre-existing fpdf2) · 0 ruff errors
+**Current work:** Post-Phase 8 hardening — see briefing.md for active plan and checklist.
 
 ---
 

@@ -10,13 +10,13 @@ from typing import TYPE_CHECKING
 
 import structlog
 
-from siopv.application.orchestration.state import (
+from siopv.domain.value_objects.discrepancy import (
     DiscrepancyHistory,
     ThresholdConfig,
 )
 
 if TYPE_CHECKING:
-    pass
+    from siopv.application.use_cases.classify_risk import ClassificationResult
 
 logger = structlog.get_logger(__name__)
 
@@ -56,8 +56,15 @@ def should_escalate_cve(
     return discrepancy > threshold
 
 
+def _extract_ml_score(classification: ClassificationResult) -> float | None:
+    """Extract ML risk probability from a ClassificationResult."""
+    if classification.risk_score is None:
+        return None
+    return classification.risk_score.risk_probability
+
+
 def calculate_escalation_candidates(
-    classifications: dict[str, object],
+    classifications: dict[str, ClassificationResult],
     llm_confidence: dict[str, float],
     *,
     config: ThresholdConfig | None = None,
@@ -78,18 +85,22 @@ def calculate_escalation_candidates(
     Returns:
         Tuple of (list of CVE IDs to escalate, adaptive_threshold)
     """
-    config = config or ThresholdConfig()
-    history = history or DiscrepancyHistory()
+    if config is None:
+        msg = "ThresholdConfig must be provided — inject via DI from settings"
+        raise ValueError(msg)
+    history = history or DiscrepancyHistory(
+        max_size=config.history_size,
+        base_threshold=config.base_threshold,
+    )
 
     # First pass: calculate all discrepancies and populate history
     discrepancies: dict[str, float] = {}
     for cve_id, classification in classifications.items():
-        # classification typed as object; is ClassificationResult at runtime
-        if classification.risk_score is None:  # type: ignore[attr-defined]
+        ml_score = _extract_ml_score(classification)
+        if ml_score is None:
             continue
 
-        ml_score = classification.risk_score.risk_probability  # type: ignore[attr-defined]
-        confidence = llm_confidence.get(cve_id, 0.5)
+        confidence = llm_confidence.get(cve_id, config.default_confidence)
         discrepancy = abs(ml_score - confidence)
 
         discrepancies[cve_id] = discrepancy
@@ -109,13 +120,8 @@ def calculate_escalation_candidates(
     # Second pass: identify escalation candidates
     escalated: list[str] = []
     for cve_id, classification in classifications.items():
-        # classification typed as object; ClassificationResult at runtime
-        ml_score = (
-            classification.risk_score.risk_probability  # type: ignore[attr-defined]
-            if classification.risk_score is not None  # type: ignore[attr-defined]
-            else None
-        )
-        confidence = llm_confidence.get(cve_id, 0.5)
+        ml_score = _extract_ml_score(classification)
+        confidence = llm_confidence.get(cve_id, config.default_confidence)
 
         if should_escalate_cve(
             ml_score=ml_score,
@@ -129,7 +135,7 @@ def calculate_escalation_candidates(
 
 
 def check_any_escalation_needed(
-    classifications: dict[str, object],
+    classifications: dict[str, ClassificationResult],
     llm_confidence: dict[str, float],
     *,
     config: ThresholdConfig | None = None,
@@ -147,16 +153,13 @@ def check_any_escalation_needed(
     Returns:
         True if any CVE should be escalated
     """
-    config = config or ThresholdConfig()
+    if config is None:
+        msg = "ThresholdConfig must be provided — inject via DI from settings"
+        raise ValueError(msg)
 
     for cve_id, classification in classifications.items():
-        # classification typed as object; ClassificationResult at runtime
-        ml_score = (
-            classification.risk_score.risk_probability  # type: ignore[attr-defined]
-            if classification.risk_score is not None  # type: ignore[attr-defined]
-            else None
-        )
-        confidence = llm_confidence.get(cve_id, 0.5)
+        ml_score = _extract_ml_score(classification)
+        confidence = llm_confidence.get(cve_id, config.default_confidence)
 
         if should_escalate_cve(
             ml_score=ml_score,

@@ -2,7 +2,7 @@
 
 ## Wave Timeout and Retry Policy
 
-For Waves 4–9, if an agent does not report within 10 minutes:
+For Waves 4–10, if an agent does not report within 10 minutes:
 1. Mark that agent as TIMEOUT-FAIL
 2. Continue with remaining agents in the wave — do NOT stop the wave
 3. Report TIMEOUT-FAIL in the final verdict — do not silently skip
@@ -35,3 +35,6 @@ An agent that runs but produces no report file is treated as FAILED.
 | wave7-config | All env vars documented, all services consistent |
 | wave8-hexarch | 0 hexagonal violations |
 | wave9-smoke | Pipeline runs clean, all required fields present |
+| wave10-wiring | 0 NOT WIRED fields (EXEMPT fields allowed) |
+| wave10-stubs | 0 STUB verdicts (SUSPICIOUS logged as warnings) |
+| wave10-config | 0 items in List A + 0 items in List B (List C = warnings) |

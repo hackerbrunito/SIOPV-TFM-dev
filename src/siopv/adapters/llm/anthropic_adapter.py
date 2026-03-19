@@ -7,21 +7,18 @@ safe defaults with warning logs.
 
 from __future__ import annotations
 
-import asyncio
-import functools
 import json
 from typing import Any
 
 import structlog
 
-from siopv.adapters.dlp._haiku_utils import create_haiku_client, extract_text_from_response
 from siopv.application.ports.llm_analysis import LLMAnalysisPort, VulnerabilityAnalysis
+from siopv.infrastructure.clients.haiku_client import create_haiku_client
 
 logger = structlog.get_logger(__name__)
 
 DEFAULT_RELEVANCE: float = 0.5
 DEFAULT_CONFIDENCE: float = 0.5
-MAX_CONTEXT_LENGTH: int = 6_000
 
 _ANALYSIS_SYSTEM_PROMPT = """\
 You are an expert cybersecurity analyst specializing in vulnerability assessment. \
@@ -73,17 +70,38 @@ Respond ONLY with the JSON object, no markdown fences or extra text.\
 """
 
 
-def _truncate_context(text: str) -> str:
-    """Truncate context text to avoid excessive token cost."""
-    return text[:MAX_CONTEXT_LENGTH]
+def _sanitize_prompt_input(text: str) -> str:
+    """Strip known prompt injection patterns from user-supplied text.
+
+    Removes instruction-override attempts that could manipulate the LLM
+    into ignoring its system prompt.
+    """
+    import re  # noqa: PLC0415
+
+    # Strip common injection patterns: "ignore previous instructions", "system:", etc.
+    patterns = [
+        r"(?i)\bignore\s+(all\s+)?(previous|prior|above)\s+(instructions?|prompts?)\b",
+        r"(?i)\bsystem\s*:",
+        r"(?i)\b(assistant|user)\s*:",
+        r"(?i)\bnew\s+instructions?\s*:",
+    ]
+    sanitized = text
+    for pattern in patterns:
+        sanitized = re.sub(pattern, "[FILTERED]", sanitized)
+    return sanitized
 
 
-def _format_context(context: dict[str, Any]) -> str:
-    """Format enrichment context dict into a readable string for the prompt."""
+def _format_context(context: dict[str, Any], max_length: int) -> str:
+    """Format enrichment context dict into a readable string for the prompt.
+
+    Sanitizes the output to mitigate prompt injection and truncates
+    to max_length characters.
+    """
     try:
-        return _truncate_context(json.dumps(context, indent=2, default=str))
+        raw = json.dumps(context, indent=2, default=str)
     except (TypeError, ValueError):
-        return _truncate_context(str(context))
+        raw = str(context)
+    return _sanitize_prompt_input(raw[:max_length])
 
 
 def _parse_analysis_response(raw_text: str) -> dict[str, Any]:
@@ -107,6 +125,9 @@ class AnthropicAnalysisAdapter(LLMAnalysisPort):
         api_key: Anthropic API key.
         sonnet_model: Model identifier for deep analysis (Claude Sonnet).
         haiku_model: Model identifier for confidence evaluation (Claude Haiku).
+        max_context_length: Max characters for context text in prompts.
+        analysis_max_tokens: Max tokens for analysis LLM response.
+        confidence_max_tokens: Max tokens for confidence evaluation LLM response.
     """
 
     def __init__(
@@ -114,10 +135,17 @@ class AnthropicAnalysisAdapter(LLMAnalysisPort):
         api_key: str,
         sonnet_model: str,
         haiku_model: str,
+        *,
+        max_context_length: int,
+        analysis_max_tokens: int,
+        confidence_max_tokens: int,
     ) -> None:
         self._client = create_haiku_client(api_key)
         self._sonnet_model = sonnet_model
         self._haiku_model = haiku_model
+        self._max_context_length = max_context_length
+        self._analysis_max_tokens = analysis_max_tokens
+        self._confidence_max_tokens = confidence_max_tokens
 
     async def _call_model(
         self,
@@ -127,36 +155,35 @@ class AnthropicAnalysisAdapter(LLMAnalysisPort):
         max_tokens: int,
     ) -> str:
         """Call an Anthropic model via executor and return raw response text."""
-        loop = asyncio.get_running_loop()
-        response = await loop.run_in_executor(
-            None,
-            functools.partial(
-                self._client.messages.create,
-                model=model,
-                max_tokens=max_tokens,
-                system=system_prompt,
-                messages=[{"role": "user", "content": user_prompt}],
-            ),
+        from siopv.infrastructure.clients.haiku_client import async_call_haiku  # noqa: PLC0415
+
+        return await async_call_haiku(
+            client=self._client,
+            model=model,
+            system=system_prompt,
+            messages=[{"role": "user", "content": user_prompt}],
+            max_tokens=max_tokens,
         )
-        return extract_text_from_response(response)
 
     async def analyze_vulnerability(
         self, cve_id: str, context: dict[str, Any]
     ) -> VulnerabilityAnalysis:
         """Analyze a vulnerability using Claude Sonnet.
 
-        On any API or parsing error, returns safe defaults with warning log.
+        Fail-open design: on any API or parsing error, returns safe defaults
+        (empty summary, neutral relevance) with a warning log so the pipeline
+        continues without blocking. Presidio DLP remains the primary safety net.
         """
         try:
             user_prompt = _ANALYSIS_USER_PROMPT.format(
-                cve_id=cve_id,
-                context=_format_context(context),
+                cve_id=_sanitize_prompt_input(cve_id),
+                context=_format_context(context, self._max_context_length),
             )
             raw = await self._call_model(
                 model=self._sonnet_model,
                 system_prompt=_ANALYSIS_SYSTEM_PROMPT,
                 user_prompt=user_prompt,
-                max_tokens=1024,
+                max_tokens=self._analysis_max_tokens,
             )
             parsed = _parse_analysis_response(raw)
             relevance = float(parsed.get("relevance_assessment", DEFAULT_RELEVANCE))
@@ -196,19 +223,21 @@ class AnthropicAnalysisAdapter(LLMAnalysisPort):
     ) -> float:
         """Evaluate classification confidence using Claude Haiku.
 
-        On any API or parsing error, returns 0.5 (neutral confidence) with warning log.
+        Fail-open design: on any API or parsing error, returns 0.5 (neutral
+        confidence) with a warning log. A neutral value avoids both
+        false-positive escalations and false-negative suppressions.
         """
         try:
             user_prompt = _CONFIDENCE_USER_PROMPT.format(
-                cve_id=cve_id,
-                classification=_format_context(classification),
-                enrichment=_format_context(enrichment),
+                cve_id=_sanitize_prompt_input(cve_id),
+                classification=_format_context(classification, self._max_context_length),
+                enrichment=_format_context(enrichment, self._max_context_length),
             )
             raw = await self._call_model(
                 model=self._haiku_model,
                 system_prompt=_CONFIDENCE_SYSTEM_PROMPT,
                 user_prompt=user_prompt,
-                max_tokens=128,
+                max_tokens=self._confidence_max_tokens,
             )
             parsed = _parse_analysis_response(raw)
             confidence = float(parsed.get("confidence", DEFAULT_CONFIDENCE))

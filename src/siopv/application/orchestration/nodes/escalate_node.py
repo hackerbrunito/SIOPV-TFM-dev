@@ -12,22 +12,26 @@ from typing import TYPE_CHECKING
 import structlog
 from langgraph.types import interrupt
 
+from siopv.application.orchestration.state import (
+    get_classifications,
+    get_escalated_cves,
+    get_llm_confidence,
+)
 from siopv.application.orchestration.utils import calculate_escalation_candidates
 
 if TYPE_CHECKING:
     from siopv.application.orchestration.state import PipelineState
+    from siopv.application.use_cases.classify_risk import ClassificationResult
+    from siopv.domain.value_objects.discrepancy import ThresholdConfig
 
 logger = structlog.get_logger(__name__)
 
-# Escalation timeout thresholds (hours → level)
-_ESCALATION_LEVEL_THRESHOLDS: list[tuple[int, int]] = [
-    (24, 3),  # >24h → auto-approved
-    (8, 2),  # >8h  → lead escalated
-    (4, 1),  # >4h  → analyst notified
-]
 
-
-def _calculate_escalation_level(escalation_timestamp: str) -> int:
+def _calculate_escalation_level(
+    escalation_timestamp: str,
+    *,
+    level_thresholds: tuple[tuple[int, int], ...] | None = None,
+) -> int:
     """Calculate escalation level based on elapsed time since escalation.
 
     Escalation tiers:
@@ -38,22 +42,37 @@ def _calculate_escalation_level(escalation_timestamp: str) -> int:
 
     Args:
         escalation_timestamp: ISO 8601 timestamp when escalation was triggered
+        level_thresholds: Tuple of (hours, level) pairs sorted descending.
+            Injected from ``EscalationConfig.level_thresholds``.
 
     Returns:
         Escalation level integer (0-3)
+
+    Raises:
+        ValueError: If level_thresholds is None (must be injected via DI).
     """
+    if level_thresholds is None:
+        msg = "level_thresholds must be provided (injected via EscalationConfig)"
+        raise ValueError(msg)
+
     escalation_time = datetime.fromisoformat(escalation_timestamp)
     now = datetime.now(UTC)
     elapsed_hours = (now - escalation_time).total_seconds() / 3600
 
-    for threshold_hours, level in _ESCALATION_LEVEL_THRESHOLDS:
+    for threshold_hours, level in level_thresholds:
         if elapsed_hours > threshold_hours:
             return level
 
     return 0
 
 
-def escalate_node(state: PipelineState) -> dict[str, object]:
+def escalate_node(
+    state: PipelineState,
+    *,
+    level_thresholds: tuple[tuple[int, int], ...] | None = None,
+    review_deadline_hours: float | None = None,
+    threshold_config: ThresholdConfig | None = None,
+) -> dict[str, object]:
     """Execute escalation phase as a LangGraph node with HITL interrupt.
 
     This node handles CVEs that require human review due to:
@@ -67,18 +86,24 @@ def escalate_node(state: PipelineState) -> dict[str, object]:
 
     Args:
         state: Current pipeline state with classifications and llm_confidence
+        level_thresholds: Escalation level thresholds from EscalationConfig.
+        review_deadline_hours: Hours until review deadline from EscalationConfig.
+        threshold_config: Threshold configuration for discrepancy calculations.
 
     Returns:
         State updates with escalation fields populated
+
+    Raises:
+        ValueError: If review_deadline_hours is None when escalation is needed.
     """
     logger.info(
         "escalate_node_started",
         thread_id=state.get("thread_id"),
-        classification_count=len(state.get("classifications", {})),
+        classification_count=len(get_classifications(state)),
     )
 
-    classifications = state.get("classifications", {})
-    llm_confidence = state.get("llm_confidence", {})
+    classifications = get_classifications(state)
+    llm_confidence = get_llm_confidence(state)
 
     if not classifications:
         logger.warning("escalate_node_skipped", reason="no_classifications")
@@ -90,14 +115,17 @@ def escalate_node(state: PipelineState) -> dict[str, object]:
 
     try:
         # Identify CVEs requiring escalation (idempotent — safe before interrupt)
-        escalated = _identify_escalation_candidates(classifications, llm_confidence)  # type: ignore[arg-type]
-    except Exception as e:
-        error_msg = f"Escalation failed: {e}"
-        logger.exception("escalate_node_failed", error=error_msg, exception=str(e))
+        escalated = _identify_escalation_candidates(
+            classifications,
+            llm_confidence,
+            config=threshold_config,
+        )
+    except Exception:
+        logger.exception("escalate_node_failed")
         return {
             "escalated_cves": [],
             "escalation_required": False,
-            "errors": [error_msg],
+            "errors": ["Escalation analysis failed — see server logs for details"],
             "current_node": "escalate",
         }
 
@@ -114,16 +142,20 @@ def escalate_node(state: PipelineState) -> dict[str, object]:
         }
 
     # --- Candidates found: prepare escalation data and interrupt ---
+    if review_deadline_hours is None:
+        msg = "review_deadline_hours must be provided (injected via EscalationConfig)"
+        raise ValueError(msg)
+
     now = datetime.now(UTC)
     escalation_timestamp = now.isoformat()
-    review_deadline = (now + timedelta(hours=24)).isoformat()
+    review_deadline = (now + timedelta(hours=review_deadline_hours)).isoformat()
 
     # Build interrupt payload (must be JSON-serializable)
     escalation_data: dict[str, object] = {
         "escalated_cves": escalated,
         "escalation_timestamp": escalation_timestamp,
         "review_deadline": review_deadline,
-        "summary": _build_escalation_summary(escalated, classifications, llm_confidence),  # type: ignore[arg-type]
+        "summary": _build_escalation_summary(escalated, classifications, llm_confidence),
     }
 
     logger.info(
@@ -148,7 +180,9 @@ def escalate_node(state: PipelineState) -> dict[str, object]:
         human_response.get("modified_recommendation") if isinstance(human_response, dict) else None
     )
 
-    escalation_level = _calculate_escalation_level(escalation_timestamp)
+    escalation_level = _calculate_escalation_level(
+        escalation_timestamp, level_thresholds=level_thresholds
+    )
 
     logger.info(
         "escalate_node_complete",
@@ -172,8 +206,10 @@ def escalate_node(state: PipelineState) -> dict[str, object]:
 
 
 def _identify_escalation_candidates(
-    classifications: dict[str, object],
+    classifications: dict[str, ClassificationResult],
     llm_confidence: dict[str, float],
+    *,
+    config: ThresholdConfig | None = None,
 ) -> list[str]:
     """Identify CVEs that should be escalated to human review.
 
@@ -184,17 +220,18 @@ def _identify_escalation_candidates(
     Args:
         classifications: Dictionary mapping CVE ID to ClassificationResult
         llm_confidence: Dictionary mapping CVE ID to LLM confidence
+        config: Threshold configuration for discrepancy calculations.
 
     Returns:
         List of CVE IDs requiring escalation
     """
-    escalated, _ = calculate_escalation_candidates(classifications, llm_confidence)
+    escalated, _ = calculate_escalation_candidates(classifications, llm_confidence, config=config)
     return escalated
 
 
 def _build_escalation_summary(
     escalated: list[str],
-    classifications: dict[str, object],
+    classifications: dict[str, ClassificationResult],
     llm_confidence: dict[str, float],
 ) -> list[dict[str, object]]:
     """Build a JSON-serializable summary of escalated CVEs for the interrupt payload.
@@ -212,8 +249,8 @@ def _build_escalation_summary(
         classification = classifications.get(cve_id)
         confidence = llm_confidence.get(cve_id, 0.0)
         ml_score = (
-            classification.risk_score.risk_probability  # type: ignore[attr-defined]
-            if classification and classification.risk_score  # type: ignore[attr-defined]
+            classification.risk_score.risk_probability
+            if classification and classification.risk_score
             else 0.0
         )
         summaries.append(
@@ -228,7 +265,11 @@ def _build_escalation_summary(
 
 
 def get_escalation_summary(state: PipelineState) -> dict[str, object]:
-    """Generate a summary of escalated CVEs for dashboard display.
+    """Extract and summarize escalation data from pipeline state.
+
+    Utility for extracting escalation summary from pipeline state — used by tests
+    and available for dashboard integration. The Streamlit dashboard currently reads
+    raw checkpoint state directly, but this function provides a structured alternative.
 
     Args:
         state: Pipeline state with escalation data
@@ -236,9 +277,9 @@ def get_escalation_summary(state: PipelineState) -> dict[str, object]:
     Returns:
         Summary dictionary with escalation details
     """
-    escalated_cves = state.get("escalated_cves", [])
-    classifications = state.get("classifications", {})
-    llm_confidence = state.get("llm_confidence", {})
+    escalated_cves = get_escalated_cves(state)
+    classifications = get_classifications(state)
+    llm_confidence = get_llm_confidence(state)
 
     escalated_details: list[dict[str, object]] = []
 
@@ -263,13 +304,8 @@ def get_escalation_summary(state: PipelineState) -> dict[str, object]:
         escalated_details.append(detail)
 
     # Sort by discrepancy (highest first)
-    # Note: type ignores needed because dict value type is `object` but we know
-    # "discrepancy" is float|None at runtime. Two separate issues:
-    # - arg-type: lambda signature doesn't match expected Callable
-    # - return-value: returning object instead of SupportsDunderLT
     escalated_details.sort(
-        # dict values typed as object; discrepancy is float|None at runtime
-        key=lambda x: x["discrepancy"] if x["discrepancy"] is not None else 0,  # type: ignore[arg-type, return-value]
+        key=lambda x: x["discrepancy"] if x["discrepancy"] is not None else 0,  # type: ignore[arg-type,return-value]
         reverse=True,
     )
 

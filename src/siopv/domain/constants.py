@@ -20,6 +20,10 @@ RISK_PROBABILITY_HIGH_THRESHOLD = 0.6  # >=0.6 = HIGH
 RISK_PROBABILITY_MEDIUM_THRESHOLD = 0.4  # >=0.4 = MEDIUM
 RISK_PROBABILITY_LOW_THRESHOLD = 0.2  # >=0.2 = LOW (below this = MINIMAL)
 
+# Discrepancy Sentinel
+# Used when ML score is unavailable — signals maximum uncertainty, always triggers escalation
+MAX_UNCERTAINTY = 1.0
+
 # Confidence Calculation
 # Used to calculate prediction confidence from probability values
 CONFIDENCE_CENTER_PROBABILITY = 0.5  # Center point for confidence calculation

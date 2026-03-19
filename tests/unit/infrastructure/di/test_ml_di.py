@@ -61,7 +61,10 @@ class TestBuildClassifier:
         mock_cls_typed.return_value = mock_instance
 
         build_classifier(settings_with_model)
-        mock_cls_typed.assert_called_once_with(model_path=settings_with_model.model_path)
+        mock_cls_typed.assert_called_once_with(
+            model_path=settings_with_model.model_path,
+            environment=settings_with_model.environment,
+        )
 
 
 # === Test exports ===

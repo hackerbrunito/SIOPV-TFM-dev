@@ -903,16 +903,43 @@ Content:
 
 Step 1 — Import check (must pass before running pipeline):
 cd /Users/bruno/siopv
-uv run python -c "from siopv.application.orchestration.graph import build_graph; print('IMPORT OK')"
+uv run python -c "from siopv.application.orchestration.graph import PipelineGraphBuilder, PipelinePorts; print('IMPORT OK')"
 
 Step 2 — Pipeline run (120 second hard timeout):
 uv run timeout 120 python -c "
-from siopv.interfaces.cli.main import run_pipeline
-result = run_pipeline('CVE-2024-1234')
-assert 'classification' in result or 'category' in result, 'Missing classification field'
-assert 'severity' in result or 'cvss_score' in result, 'Missing severity field'
-assert 'cve_id' in result or 'id' in result, 'Missing cve_id field'
-print('SMOKE TEST PASSED:', result)
+import asyncio
+from pathlib import Path
+from siopv.application.orchestration.graph import PipelinePorts, run_pipeline
+from siopv.infrastructure.config.settings import get_settings
+from siopv.infrastructure.di import (
+    build_classifier, build_epss_client, build_escalation_config,
+    build_github_client, build_llm_analysis, build_nvd_client,
+    build_osint_client, build_threshold_config, build_trivy_parser,
+    build_vector_store, get_authorization_port, get_dual_layer_dlp_port,
+)
+settings = get_settings()
+ports = PipelinePorts(
+    checkpoint_db_path=settings.checkpoint_db_path,
+    trivy_parser=build_trivy_parser(),
+    authorization_port=get_authorization_port(),
+    dlp_port=get_dual_layer_dlp_port(),
+    nvd_client=build_nvd_client(settings),
+    epss_client=build_epss_client(settings),
+    github_client=build_github_client(settings),
+    osint_client=build_osint_client(settings),
+    vector_store=build_vector_store(settings),
+    classifier=build_classifier(settings),
+    llm_analysis=build_llm_analysis(settings),
+    threshold_config=build_threshold_config(settings),
+    escalation_config=build_escalation_config(settings),
+    batch_size=50,
+)
+# Requires a real Trivy JSON report file — use testing-kit sample if available
+report = Path('testing-kit/data/trivy-sample.json')
+if not report.exists():
+    print('SKIP: no sample Trivy report found'); exit(0)
+result = asyncio.run(run_pipeline(report_path=report, ports=ports))
+print('SMOKE TEST PASSED:', dict(result))
 "
 
 Step 3 — Streamlit health check:
@@ -926,4 +953,63 @@ Write report to: {VERIFY_DIR}/reports/wave9-smoke-test-{TIMESTAMP}.md
 
 When done:
 SendMessage(to="orchestrator", message="WAVE 9 AGENT wave9-smoke COMPLETE: {PASS|FAIL} — {import_status}, {pipeline_status}, {streamlit_status} — duration: {seconds}s — report: {path}")
+```
+
+---
+
+## WAVE 10 — Functional Completeness (3 agents, parallel)
+
+**Purpose:** Detect functional completeness gaps that structural checks miss: unwired settings,
+stub implementations, and configuration file drift.
+
+**Agents:**
+1. `wave10-wiring` — Wiring Auditor (uses `.claude/agents/wiring-auditor.md`)
+2. `wave10-stubs` — Stub Detector (uses `.claude/agents/stub-detector.md`)
+3. `wave10-config` — Config Cross-Checker (uses `.claude/agents/config-cross-checker.md`)
+
+**Duration:** ~3 min (grep-based, no code execution)
+**Parallelism:** All 3 run in parallel
+
+**Spawn prompts:** Each agent reads its own agent definition file for instructions. The orchestrator only needs to set VERIFY_DIR and report path.
+
+### wave10-wiring prompt:
+```
+You are the wiring auditor for the SIOPV /verify pipeline.
+
+VERIFY_DIR: {VERIFY_DIR}
+
+Read your full instructions from .claude/agents/wiring-auditor.md and execute them.
+
+Write report to: {VERIFY_DIR}/reports/wave10-wiring-audit-{TIMESTAMP}.md
+
+When done:
+SendMessage(to="orchestrator", message="WAVE 10 AGENT wave10-wiring COMPLETE: {PASS|FAIL} — wired: {N}, not_wired: {N}, exempt: {N} — report: {path}")
+```
+
+### wave10-stubs prompt:
+```
+You are the stub detector for the SIOPV /verify pipeline.
+
+VERIFY_DIR: {VERIFY_DIR}
+
+Read your full instructions from .claude/agents/stub-detector.md and execute them.
+
+Write report to: {VERIFY_DIR}/reports/wave10-stub-detection-{TIMESTAMP}.md
+
+When done:
+SendMessage(to="orchestrator", message="WAVE 10 AGENT wave10-stubs COMPLETE: {PASS|FAIL} — real: {N}, stub: {N}, suspicious: {N} — report: {path}")
+```
+
+### wave10-config prompt:
+```
+You are the config cross-checker for the SIOPV /verify pipeline.
+
+VERIFY_DIR: {VERIFY_DIR}
+
+Read your full instructions from .claude/agents/config-cross-checker.md and execute them.
+
+Write report to: {VERIFY_DIR}/reports/wave10-config-check-{TIMESTAMP}.md
+
+When done:
+SendMessage(to="orchestrator", message="WAVE 10 AGENT wave10-config COMPLETE: {PASS|FAIL} — list_a: {N}, list_b: {N}, list_c: {N} — report: {path}")
 ```

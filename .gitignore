@@ -91,13 +91,14 @@ claude-verification-reports/
 .ignorar/
 .env.bckp
 
-# Claude Code machine-local files (never commit these)
-.claude/memory/
-.claude/agent-memory/
-.claude/agent-memory-local/
-.claude/CLAUDE.local.md
-.claude/settings.local.json
-.claude/research-cache/
+# Claude Code (development tooling — never commit)
+.claude/
+CLAUDE.md
+testing-kit/claude/
+
+# Verification artifacts (ephemeral pipeline outputs)
+.verify-*/
+coverage.xml
 
 # Build checkpoints (ephemeral verification markers)
 .build/

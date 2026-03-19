@@ -20,9 +20,10 @@ from tenacity import (
     wait_exponential,
 )
 
+from siopv.adapters.external_apis.base_client import BaseAPIClient
 from siopv.application.ports import NVDClientPort
 from siopv.domain.exceptions import ExternalAPIError
-from siopv.domain.value_objects import NVDEnrichment
+from siopv.domain.value_objects import NVDEnrichment, validate_cve_id
 from siopv.infrastructure.resilience import (
     CircuitBreaker,
     CircuitBreakerError,
@@ -40,7 +41,7 @@ class NVDClientError(ExternalAPIError):
     """Error from NVD API operations."""
 
 
-class NVDClient(NVDClientPort):
+class NVDClient(BaseAPIClient[NVDEnrichment], NVDClientPort):
     """NVD API 2.0 client implementation.
 
     Features:
@@ -48,7 +49,7 @@ class NVDClient(NVDClientPort):
     - Rate limiting (5 req/30s without key, 50 req/30s with key)
     - Circuit breaker for fault tolerance
     - Retry with exponential backoff
-    - Response caching (in-memory)
+    - Response caching (in-memory with LRU eviction)
     """
 
     # HTTP status codes
@@ -67,11 +68,35 @@ class NVDClient(NVDClientPort):
             settings: Application settings with NVD configuration
             client: Optional pre-configured httpx client (for testing)
         """
-        self._base_url = settings.nvd_base_url
         self._api_key = settings.nvd_api_key.get_secret_value() if settings.nvd_api_key else None
 
+        headers = {"User-Agent": "SIOPV/1.0"}
+        if self._api_key:
+            headers["apiKey"] = self._api_key
+
+        super().__init__(
+            timeout=httpx.Timeout(
+                connect=settings.nvd_timeout_connect,
+                read=settings.nvd_timeout_read,
+                write=settings.nvd_timeout_write,
+                pool=settings.nvd_timeout_pool,
+            ),
+            headers=headers,
+            cache_max_size=settings.api_client_cache_max_size,
+            client=client,
+        )
+
+        self._base_url = settings.nvd_base_url
+        self._max_concurrent = settings.nvd_max_concurrent
+
         # Configure rate limiter based on API key presence
-        self._rate_limiter = create_nvd_rate_limiter(has_api_key=bool(self._api_key))
+        self._rate_limiter = create_nvd_rate_limiter(
+            has_api_key=bool(self._api_key),
+            rate_with_key=settings.nvd_rate_limit_with_key,
+            rate_without_key=settings.nvd_rate_limit_without_key,
+            period_seconds=settings.nvd_rate_limit_period_seconds,
+            max_queue_size=settings.rate_limiter_max_queue_size,
+        )
 
         # Configure circuit breaker
         self._circuit_breaker = CircuitBreaker(
@@ -80,43 +105,11 @@ class NVDClient(NVDClientPort):
             recovery_timeout=settings.circuit_breaker_recovery_timeout,
         )
 
-        # HTTP client configuration
-        self._timeout = httpx.Timeout(connect=5.0, read=30.0, write=5.0, pool=5.0)
-        self._external_client = client
-        self._owned_client: httpx.AsyncClient | None = None
-
-        # Simple in-memory cache
-        self._cache: dict[str, NVDEnrichment] = {}
-
         logger.info(
             "nvd_client_initialized",
             base_url=self._base_url,
             has_api_key=bool(self._api_key),
         )
-
-    async def _get_client(self) -> httpx.AsyncClient:
-        """Get or create HTTP client."""
-        if self._external_client:
-            return self._external_client
-
-        if self._owned_client is None:
-            headers = {"User-Agent": "SIOPV/1.0"}
-            if self._api_key:
-                headers["apiKey"] = self._api_key
-
-            self._owned_client = httpx.AsyncClient(
-                timeout=self._timeout,
-                headers=headers,
-                follow_redirects=True,
-            )
-
-        return self._owned_client
-
-    async def close(self) -> None:
-        """Close HTTP client if owned."""
-        if self._owned_client:
-            await self._owned_client.aclose()
-            self._owned_client = None
 
     @retry(
         retry=retry_if_exception_type((httpx.TimeoutException, httpx.HTTPStatusError)),
@@ -176,10 +169,13 @@ class NVDClient(NVDClientPort):
         Raises:
             NVDClientError: On API errors after retries exhausted
         """
+        validate_cve_id(cve_id)
+
         # Check cache first
-        if cve_id in self._cache:
+        cached = self._cache_get(cve_id)
+        if cached is not None:
             logger.debug("nvd_cache_hit", cve_id=cve_id)
-            return self._cache[cve_id]
+            return cached
 
         try:
             # Apply rate limiting
@@ -194,7 +190,7 @@ class NVDClient(NVDClientPort):
 
             # Parse and cache result
             enrichment = NVDEnrichment.from_nvd_response(data)
-            self._cache[cve_id] = enrichment
+            self._cache_set(cve_id, enrichment)
 
         except CircuitBreakerError:
             logger.warning("nvd_circuit_open", cve_id=cve_id)
@@ -224,19 +220,20 @@ class NVDClient(NVDClientPort):
             return enrichment
 
     async def get_cves_batch(
-        self, cve_ids: list[str], *, max_concurrent: int = 5
+        self, cve_ids: list[str], *, max_concurrent: int | None = None
     ) -> dict[str, NVDEnrichment | None]:
         """Fetch multiple CVEs with rate limiting.
 
         Args:
             cve_ids: List of CVE identifiers
-            max_concurrent: Maximum concurrent requests
+            max_concurrent: Maximum concurrent requests (defaults to settings value)
 
         Returns:
             Dictionary mapping cve_id to NVDEnrichment or None
         """
+        concurrency = max_concurrent if max_concurrent is not None else self._max_concurrent
         results: dict[str, NVDEnrichment | None] = {}
-        semaphore = asyncio.Semaphore(max_concurrent)
+        semaphore = asyncio.Semaphore(concurrency)
 
         async def fetch_one(cve_id: str) -> tuple[str, NVDEnrichment | None]:
             async with semaphore:
@@ -269,21 +266,16 @@ class NVDClient(NVDClientPort):
         """
         try:
             client = await self._get_client()
-            # Use a known CVE for health check
+            # Use a known CVE for health check, reuse configured timeout
             response = await client.get(
                 f"{self._base_url}?cveId=CVE-2021-44228",
-                timeout=httpx.Timeout(5.0),
+                timeout=self._timeout,
             )
         except Exception as e:
             logger.warning("nvd_health_check_failed", error=str(e))
             return False
         else:
             return response.status_code in (200, 404)
-
-    def clear_cache(self) -> None:
-        """Clear the in-memory cache."""
-        self._cache.clear()
-        logger.debug("nvd_cache_cleared")
 
 
 __all__ = ["NVDClient", "NVDClientError"]

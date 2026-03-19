@@ -232,6 +232,9 @@ class PresidioAdapter:
         haiku_model: str,
         *,
         enable_semantic_validation: bool = True,
+        validation_max_tokens: int = 10,
+        min_short_text_length: int = 20,
+        max_text_length: int = 4_000,
     ) -> None:
         """Initialise Presidio engines and optional Haiku validator.
 
@@ -240,6 +243,8 @@ class PresidioAdapter:
             haiku_model: Claude model ID to use for semantic validation
                 (e.g. from settings.claude_haiku_model).
             enable_semantic_validation: If False, skip Haiku validation step.
+            max_text_length: Maximum text length before truncation
+                (from settings.haiku_max_text_length).
         """
         self._analyzer = _build_analyzer()
         self._anonymizer = _build_anonymizer()
@@ -249,6 +254,9 @@ class PresidioAdapter:
             self._haiku_validator = HaikuSemanticValidatorAdapter(
                 api_key=api_key,
                 model=haiku_model,
+                validation_max_tokens=validation_max_tokens,
+                min_short_text_length=min_short_text_length,
+                max_text_length=max_text_length,
             )
             logger.info(
                 "presidio_adapter_initialized",

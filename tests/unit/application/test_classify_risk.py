@@ -219,6 +219,17 @@ class TestSHAPValues:
         assert "SHAP" in s
         assert "epss_score" in s
 
+    def test_mismatched_shap_values_length_raises(self):
+        """Test that mismatched shap_values and feature_names lengths raise ValueError."""
+        with pytest.raises(
+            ValueError, match=r"shap_values length.*must match.*feature_names length"
+        ):
+            SHAPValues(
+                feature_names=["a", "b", "c"],
+                shap_values=[0.1, 0.2],
+                base_value=0.5,
+            )
+
 
 class TestLIMEExplanation:
     """Tests for LIMEExplanation value object."""

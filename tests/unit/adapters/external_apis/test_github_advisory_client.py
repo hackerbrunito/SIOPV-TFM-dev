@@ -32,8 +32,17 @@ def _make_settings(*, has_token: bool = False) -> MagicMock:
     settings.github_token = (
         MagicMock(get_secret_value=lambda: "ghp_test_token") if has_token else None
     )
+    settings.github_timeout_connect = 5.0
+    settings.github_timeout_read = 30.0
+    settings.github_timeout_write = 5.0
+    settings.github_timeout_pool = 5.0
+    settings.github_rate_limit_with_token = 5000
+    settings.github_rate_limit_without_token = 60
+    settings.github_rate_limit_period_seconds = 3600.0
+    settings.rate_limiter_max_queue_size = 100
     settings.circuit_breaker_failure_threshold = 5
     settings.circuit_breaker_recovery_timeout = 30
+    settings.api_client_cache_max_size = 1000
     return settings
 
 
@@ -325,3 +334,98 @@ class TestLifecycle:
             mock_cb.return_value = mock_cb_instance
             client = GitHubAdvisoryClient(settings)
         assert client._token == "ghp_test_token"
+
+
+# ---------------------------------------------------------------------------
+# Owned client lifecycle (lines 178-203)
+# ---------------------------------------------------------------------------
+
+
+class TestOwnedClient:
+    @pytest.mark.asyncio
+    async def test_creates_owned_client_without_external(self) -> None:
+        """Test _get_client creates owned client when no external client provided."""
+        settings = _make_settings(has_token=True)
+        with (
+            patch(
+                "siopv.adapters.external_apis.github_advisory_client.create_github_rate_limiter"
+            ) as mock_rl,
+            patch("siopv.adapters.external_apis.github_advisory_client.CircuitBreaker") as mock_cb,
+        ):
+            mock_rl.return_value = AsyncMock(acquire=AsyncMock())
+            mock_cb_instance = MagicMock()
+            mock_cb_instance.__aenter__ = AsyncMock(return_value=None)
+            mock_cb_instance.__aexit__ = AsyncMock(return_value=False)
+            mock_cb.return_value = mock_cb_instance
+            client = GitHubAdvisoryClient(settings)
+
+        http_client = await client._get_client()
+        assert http_client is not None
+        assert client._owned_client is http_client
+        # Second call returns same instance
+        assert await client._get_client() is http_client
+        await client.close()
+
+    @pytest.mark.asyncio
+    async def test_close_owned_client(self) -> None:
+        """Test close() shuts down the owned client."""
+        settings = _make_settings()
+        with (
+            patch(
+                "siopv.adapters.external_apis.github_advisory_client.create_github_rate_limiter"
+            ) as mock_rl,
+            patch("siopv.adapters.external_apis.github_advisory_client.CircuitBreaker") as mock_cb,
+        ):
+            mock_rl.return_value = AsyncMock(acquire=AsyncMock())
+            mock_cb_instance = MagicMock()
+            mock_cb_instance.__aenter__ = AsyncMock(return_value=None)
+            mock_cb_instance.__aexit__ = AsyncMock(return_value=False)
+            mock_cb.return_value = mock_cb_instance
+            client = GitHubAdvisoryClient(settings)
+
+        # Create owned client
+        await client._get_client()
+        assert client._owned_client is not None
+        await client.close()
+        assert client._owned_client is None
+
+    @pytest.mark.asyncio
+    async def test_close_noop_when_no_owned_client(
+        self, github_client: GitHubAdvisoryClient
+    ) -> None:
+        """Test close() does nothing when using external client."""
+        await github_client.close()  # Should not raise
+
+
+# ---------------------------------------------------------------------------
+# Unexpected error in get_advisory_by_cve (lines 315-318)
+# ---------------------------------------------------------------------------
+
+
+class TestGetAdvisoryByCveUnexpectedError:
+    @pytest.mark.asyncio
+    async def test_wraps_unexpected_exception(
+        self, github_client: GitHubAdvisoryClient, mock_http_client: AsyncMock
+    ) -> None:
+        """Test unexpected exceptions are wrapped in GitHubAdvisoryClientError."""
+        mock_http_client.post.side_effect = RuntimeError("unexpected failure")
+
+        with pytest.raises(GitHubAdvisoryClientError, match="Unexpected error"):
+            await github_client.get_advisory_by_cve("CVE-2024-0001")
+
+
+# ---------------------------------------------------------------------------
+# Error paths in get_advisories_for_package (lines 389-395)
+# ---------------------------------------------------------------------------
+
+
+class TestGetAdvisoriesForPackageErrors:
+    @pytest.mark.asyncio
+    async def test_returns_empty_on_unexpected_exception(
+        self, github_client: GitHubAdvisoryClient, mock_http_client: AsyncMock
+    ) -> None:
+        """Test unexpected exceptions return empty list (not raise)."""
+        mock_http_client.post.side_effect = RuntimeError("unexpected")
+
+        results = await github_client.get_advisories_for_package("broken-pkg")
+        assert results == []

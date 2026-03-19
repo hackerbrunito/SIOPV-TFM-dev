@@ -28,8 +28,18 @@ def _make_settings(*, has_api_key: bool = False) -> MagicMock:
     settings = MagicMock()
     settings.nvd_base_url = "https://services.nvd.nist.gov/rest/json/cves/2.0"
     settings.nvd_api_key = MagicMock(get_secret_value=lambda: "test-key") if has_api_key else None
+    settings.nvd_timeout_connect = 5.0
+    settings.nvd_timeout_read = 30.0
+    settings.nvd_timeout_write = 5.0
+    settings.nvd_timeout_pool = 5.0
+    settings.nvd_max_concurrent = 5
+    settings.nvd_rate_limit_with_key = 50
+    settings.nvd_rate_limit_without_key = 5
+    settings.nvd_rate_limit_period_seconds = 30.0
+    settings.rate_limiter_max_queue_size = 100
     settings.circuit_breaker_failure_threshold = 5
     settings.circuit_breaker_recovery_timeout = 30
+    settings.api_client_cache_max_size = 1000
     return settings
 
 

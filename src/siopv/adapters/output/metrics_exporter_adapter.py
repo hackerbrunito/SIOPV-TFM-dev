@@ -87,20 +87,13 @@ class MetricsExporterAdapter(MetricsExporterPort):
     - Auto-creates output directory if missing
     """
 
-    def __init__(self, output_dir: str | Path | None = None) -> None:
+    def __init__(self, output_dir: str | Path) -> None:
         """Initialize metrics exporter.
 
         Args:
-            output_dir: Directory for output files. Defaults to SIOPV_OUTPUT_DIR
-                        env var or ./output/.
+            output_dir: Directory for output files. Injected from settings.output_dir via DI.
         """
-        env_dir = os.environ.get("SIOPV_OUTPUT_DIR")
-        if output_dir is not None:
-            self._output_dir = Path(output_dir)
-        elif env_dir:
-            self._output_dir = Path(env_dir)
-        else:
-            self._output_dir = Path("./output")
+        self._output_dir = Path(output_dir)
 
         logger.info("metrics_exporter_initialized", output_dir=str(self._output_dir))
 

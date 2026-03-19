@@ -319,7 +319,13 @@ class TestRateLimiterFactories:
         """Test NVD rate limiter without API key."""
         from siopv.infrastructure.resilience.rate_limiter import create_nvd_rate_limiter
 
-        limiter = create_nvd_rate_limiter(has_api_key=False)
+        limiter = create_nvd_rate_limiter(
+            has_api_key=False,
+            rate_with_key=50,
+            rate_without_key=5,
+            period_seconds=30.0,
+            max_queue_size=100,
+        )
         stats = limiter.get_stats()
 
         # 5 requests per 30 seconds = 0.167 req/s
@@ -329,7 +335,13 @@ class TestRateLimiterFactories:
         """Test NVD rate limiter with API key."""
         from siopv.infrastructure.resilience.rate_limiter import create_nvd_rate_limiter
 
-        limiter = create_nvd_rate_limiter(has_api_key=True)
+        limiter = create_nvd_rate_limiter(
+            has_api_key=True,
+            rate_with_key=50,
+            rate_without_key=5,
+            period_seconds=30.0,
+            max_queue_size=100,
+        )
         stats = limiter.get_stats()
 
         # 50 requests per 30 seconds = 1.67 req/s
@@ -339,7 +351,13 @@ class TestRateLimiterFactories:
         """Test GitHub rate limiter without token."""
         from siopv.infrastructure.resilience.rate_limiter import create_github_rate_limiter
 
-        limiter = create_github_rate_limiter(has_token=False)
+        limiter = create_github_rate_limiter(
+            has_token=False,
+            rate_with_token=5000,
+            rate_without_token=60,
+            period_seconds=3600.0,
+            max_queue_size=100,
+        )
         stats = limiter.get_stats()
 
         # 60 requests per hour
@@ -349,7 +367,13 @@ class TestRateLimiterFactories:
         """Test GitHub rate limiter with token."""
         from siopv.infrastructure.resilience.rate_limiter import create_github_rate_limiter
 
-        limiter = create_github_rate_limiter(has_token=True)
+        limiter = create_github_rate_limiter(
+            has_token=True,
+            rate_with_token=5000,
+            rate_without_token=60,
+            period_seconds=3600.0,
+            max_queue_size=100,
+        )
         stats = limiter.get_stats()
 
         # 5000 requests per hour
@@ -359,7 +383,11 @@ class TestRateLimiterFactories:
         """Test EPSS rate limiter (conservative default)."""
         from siopv.infrastructure.resilience.rate_limiter import create_epss_rate_limiter
 
-        limiter = create_epss_rate_limiter()
+        limiter = create_epss_rate_limiter(
+            rps=10.0,
+            burst_size=20,
+            max_queue_size=100,
+        )
         stats = limiter.get_stats()
 
         assert stats["refill_rate"] == 10.0

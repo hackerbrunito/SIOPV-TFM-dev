@@ -4,7 +4,7 @@ This document is read and executed by the orchestrator agent.
 
 ## Orchestrator Responsibilities
 
-- Drive the full pipeline from pre-wave through Wave 9
+- Drive the full pipeline from pre-wave through Wave 10
 - For each wave: send spawn request -> wait for confirmation -> wait for agents -> collect results -> send wave report -> wait for approval
 - **Never spawn agents directly** — only team-lead can spawn
 - **Never communicate with human directly** — only through team-lead
@@ -75,7 +75,19 @@ If 31 files: 7 batches (6 x 5 files + 1 x 1 file). Spawn one agent per batch per
 
 ---
 
-## Post-Wave Actions (orchestrator runs after ALL waves pass)
+## Wave 10 — Functional Completeness (after Wave 9)
+
+Wave 10 runs 3 grep-based agents in parallel (~3 min). These agents check functional completeness that structural scans miss.
+
+**Agents:** `wave10-wiring`, `wave10-stubs`, `wave10-config`
+**Parallelism:** All 3 in parallel
+**Pass criteria:** Zero HIGH violations from any of the 3 agents
+
+See `wave-prompts.md` section "WAVE 10" for spawn prompts.
+
+---
+
+## Post-Wave Actions (orchestrator runs after ALL waves pass, including Wave 10)
 
 ```bash
 TARGET="/Users/bruno/siopv"

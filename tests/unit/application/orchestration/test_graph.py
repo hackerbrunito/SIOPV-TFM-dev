@@ -10,6 +10,7 @@ import pytest
 
 from siopv.application.orchestration.graph import (
     PipelineGraphBuilder,
+    PipelinePorts,
     create_pipeline_graph,
     run_pipeline,
 )
@@ -23,15 +24,16 @@ class TestPipelineGraphBuilder:
         """Test builder initializes with defaults."""
         builder = PipelineGraphBuilder()
 
-        assert builder._checkpoint_db_path == "siopv_checkpoints.db"
+        assert builder._ports.checkpoint_db_path is None
         assert builder._graph is None
         assert builder._compiled is None
 
     def test_builder_with_custom_checkpoint_path(self):
         """Test builder with custom checkpoint path."""
-        builder = PipelineGraphBuilder(checkpoint_db_path="/custom/path.db")
+        ports = PipelinePorts(checkpoint_db_path="/custom/path.db")
+        builder = PipelineGraphBuilder(ports)
 
-        assert builder._checkpoint_db_path == "/custom/path.db"
+        assert builder._ports.checkpoint_db_path == "/custom/path.db"
 
     def test_build_returns_self(self):
         """Test build() returns self for chaining."""
@@ -55,7 +57,8 @@ class TestPipelineGraphBuilder:
         with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
             db_path = f.name
 
-        builder = PipelineGraphBuilder(checkpoint_db_path=db_path)
+        ports = PipelinePorts(checkpoint_db_path=db_path)
+        builder = PipelineGraphBuilder(ports)
 
         compiled = builder.build().compile(with_checkpointer=True)
 
@@ -111,8 +114,9 @@ class TestCreatePipelineGraph:
         with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
             db_path = f.name
 
+        ports = PipelinePorts(checkpoint_db_path=db_path)
         graph = create_pipeline_graph(
-            checkpoint_db_path=db_path,
+            ports,
             with_checkpointer=True,
         )
 
@@ -174,9 +178,10 @@ class TestRunPipeline:
         with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
             db_path = f.name
 
+        ports = PipelinePorts(checkpoint_db_path=db_path)
         result = await run_pipeline(
             trivy_report_file,
-            checkpoint_db_path=db_path,
+            ports,
         )
 
         assert result is not None
@@ -212,3 +217,62 @@ class TestGraphStructure:
         # Should complete with errors since no report
         assert "errors" in result
         assert len(result["errors"]) > 0
+
+
+class TestValidatePath:
+    """Tests for _validate_path helper."""
+
+    def test_rejects_invalid_extension(self):
+        """Test path with disallowed extension raises ValueError."""
+        from siopv.application.orchestration.graph import _validate_path
+
+        with pytest.raises(ValueError, match="Invalid file extension"):
+            _validate_path(Path("/tmp/test.exe"), allowed_extensions={".db", ".sqlite"})
+
+    def test_rejects_nonexistent_parent(self):
+        """Test must_exist=True with missing parent raises ValueError."""
+        from siopv.application.orchestration.graph import _validate_path
+
+        with pytest.raises(ValueError, match="Parent directory does not exist"):
+            _validate_path(
+                Path("/nonexistent/deeply/nested/dir/file.db"),
+                must_exist=True,
+                allowed_extensions={".db"},
+            )
+
+    def test_accepts_valid_path(self):
+        """Test valid path passes validation."""
+        from siopv.application.orchestration.graph import _validate_path
+
+        result = _validate_path(Path("/tmp/test.db"), allowed_extensions={".db"})
+        assert result.name == "test.db"
+
+
+class TestPipelineGraphBuilderErrors:
+    """Tests for error branches in PipelineGraphBuilder."""
+
+    def test_add_nodes_without_build_raises(self):
+        """Test _add_nodes raises when graph not initialized."""
+        builder = PipelineGraphBuilder()
+
+        with pytest.raises(RuntimeError, match="Graph not initialized"):
+            builder._add_nodes()
+
+    def test_add_edges_without_build_raises(self):
+        """Test _add_edges raises when graph not initialized."""
+        builder = PipelineGraphBuilder()
+
+        with pytest.raises(RuntimeError, match="Graph not initialized"):
+            builder._add_edges()
+
+    def test_compile_double_none_guard(self):
+        """Test compile raises if build() somehow leaves graph as None."""
+        from unittest.mock import patch
+
+        builder = PipelineGraphBuilder()
+        # Mock build() to be a no-op (doesn't set _graph), simulating silent failure
+        with (
+            patch.object(builder, "build", return_value=builder),
+            pytest.raises(RuntimeError, match="Failed to build graph"),
+        ):
+            builder.compile(with_checkpointer=False)

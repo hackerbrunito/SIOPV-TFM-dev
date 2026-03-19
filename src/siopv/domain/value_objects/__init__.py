@@ -7,6 +7,11 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from siopv.domain.value_objects.discrepancy import (
+    DiscrepancyHistory,
+    DiscrepancyResult,
+    ThresholdConfig,
+)
 from siopv.domain.value_objects.enrichment import (
     CVSSVector,
     EnrichmentData,
@@ -15,6 +20,7 @@ from siopv.domain.value_objects.enrichment import (
     NVDEnrichment,
     OSINTResult,
 )
+from siopv.domain.value_objects.escalation import EscalationConfig
 from siopv.domain.value_objects.risk_score import (
     LIMEExplanation,
     RiskScore,
@@ -52,6 +58,24 @@ class CVEId(BaseModel):
 
     def __hash__(self) -> int:
         return hash(self.value)
+
+
+def validate_cve_id(cve_id: str) -> str:
+    """Validate CVE ID format and return the validated string.
+
+    Args:
+        cve_id: CVE identifier to validate
+
+    Returns:
+        The validated CVE ID string
+
+    Raises:
+        ValueError: If cve_id does not match CVE-YYYY-NNNNN format
+    """
+    if not CVE_PATTERN.match(cve_id):
+        msg = f"Invalid CVE ID format: {cve_id}. Expected CVE-YYYY-NNNNN"
+        raise ValueError(msg)
+    return cve_id
 
 
 class CVSSScore(BaseModel):
@@ -112,8 +136,11 @@ __all__ = [
     "CVEId",
     "CVSSScore",
     "CVSSVector",
+    "DiscrepancyHistory",
+    "DiscrepancyResult",
     "EPSSScore",
     "EnrichmentData",
+    "EscalationConfig",
     "GitHubAdvisory",
     "LIMEExplanation",
     "LayerInfo",
@@ -123,4 +150,6 @@ __all__ = [
     "RiskScore",
     "SHAPValues",
     "SeverityLevel",
+    "ThresholdConfig",
+    "validate_cve_id",
 ]

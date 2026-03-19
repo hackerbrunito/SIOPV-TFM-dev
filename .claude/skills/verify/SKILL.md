@@ -1,6 +1,6 @@
 ---
 name: verify
-description: "Runs 14 verification agents (Pre-wave + Waves 1-9), clears pending markers. USE WHEN pre-commit or /verify invoked."
+description: "Runs 17 verification agents (Pre-wave + Waves 1-10), clears pending markers. USE WHEN pre-commit or /verify invoked."
 disable-model-invocation: true
 context: fork
 agent: general-purpose
@@ -35,7 +35,8 @@ WAVE 5    → semantic-correctness-auditor + circular-import-detector (2 paralle
 WAVE 6    → import-resolver + dependency-scanner (2 parallel)
 WAVE 7    → config-validator (1 agent)
 WAVE 8    → hex-arch-remediator (1 agent)
-WAVE 9    → smoke-test-runner (1 agent, last)
+WAVE 9    → smoke-test-runner (1 agent)
+WAVE 10   → wiring-auditor + stub-detector + config-cross-checker (3 parallel, last)
 ```
 
 ## 3-Tier Hierarchy
@@ -124,6 +125,6 @@ TeamDelete()
 
 - Universal agent rules: [agent-rules.md](agent-rules.md)
 - Orchestrator protocol + communication + JSONL logging: [orchestrator-protocol.md](orchestrator-protocol.md)
-- All wave agent prompts (PRE-WAVE through WAVE 9): [wave-prompts.md](wave-prompts.md)
+- All wave agent prompts (PRE-WAVE through WAVE 10): [wave-prompts.md](wave-prompts.md)
 - Pass thresholds + timeout policy: [thresholds.md](thresholds.md)
 - Output directory structure + marker system: [output-structure.md](output-structure.md)

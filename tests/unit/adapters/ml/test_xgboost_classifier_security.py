@@ -6,7 +6,6 @@ Tests for:
 
 from __future__ import annotations
 
-import os
 from unittest.mock import patch
 
 import pytest
@@ -91,38 +90,29 @@ class TestGetRandomStateFunction:
         assert len(results) > 1
 
     def test_default_environment_is_development(self) -> None:
-        """Test that default environment (when env var not set) is development."""
-        with patch.dict(os.environ, {}, clear=True):
-            # Remove SIOPV_ENVIRONMENT if it exists
-            os.environ.pop("SIOPV_ENVIRONMENT", None)
+        """Test that default environment parameter is development."""
+        result = _get_random_state(configured_value=None)
 
-            result = _get_random_state(configured_value=None)
+        assert result == DEFAULT_DEV_RANDOM_STATE
 
-            assert result == DEFAULT_DEV_RANDOM_STATE
-
-    def test_reads_from_siopv_environment_variable(self) -> None:
-        """Test that function reads SIOPV_ENVIRONMENT env var."""
-        with (
-            patch.dict(os.environ, {"SIOPV_ENVIRONMENT": "production"}),
-            patch("siopv.adapters.ml.xgboost_classifier.secrets") as mock_secrets,
-        ):
+    def test_production_environment_uses_crypto_random(self) -> None:
+        """Test that production environment uses cryptographic randomness."""
+        with patch("siopv.adapters.ml.xgboost_classifier.secrets") as mock_secrets:
             mock_secrets.randbelow.return_value = 111222333
 
-            result = _get_random_state(configured_value=None)
+            result = _get_random_state(configured_value=None, environment="production")
 
             mock_secrets.randbelow.assert_called_once()
             assert result == 111222333
 
-    def test_environment_parameter_overrides_env_var(self) -> None:
-        """Test that environment parameter overrides env var."""
-        with patch.dict(os.environ, {"SIOPV_ENVIRONMENT": "production"}):
-            # Pass environment="development" to override env var
-            result = _get_random_state(
-                configured_value=None,
-                environment="development",
-            )
+    def test_environment_parameter_controls_behavior(self) -> None:
+        """Test that environment parameter controls random state behavior."""
+        result = _get_random_state(
+            configured_value=None,
+            environment="development",
+        )
 
-            assert result == DEFAULT_DEV_RANDOM_STATE
+        assert result == DEFAULT_DEV_RANDOM_STATE
 
     def test_production_random_state_is_within_valid_range(self) -> None:
         """Test that production random state is within valid 32-bit range."""
@@ -395,15 +385,14 @@ class TestRandomStateAuditability:
 
     def test_random_state_in_production_is_auditable(self) -> None:
         """Test that production random state is stored for audit."""
-        with patch.dict(os.environ, {"SIOPV_ENVIRONMENT": "production"}):
-            classifier = XGBoostClassifier(random_state=None)
+        classifier = XGBoostClassifier(random_state=None, environment="production")
 
-            # Get the production random state
-            production_state = classifier._get_training_random_state()
+        # Get the production random state
+        production_state = classifier._get_training_random_state()
 
-            # Should be stored
-            assert classifier._used_random_state == production_state
+        # Should be stored
+        assert classifier._used_random_state == production_state
 
-            # Metadata should show it
-            metadata = classifier.get_training_metadata()
-            assert metadata["random_state_used"] == production_state
+        # Metadata should show it
+        metadata = classifier.get_training_metadata()
+        assert metadata["random_state_used"] == production_state

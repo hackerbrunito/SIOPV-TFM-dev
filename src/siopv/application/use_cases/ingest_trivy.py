@@ -176,7 +176,11 @@ def ingest_trivy_report(
     report_path: Path | str,
     parser: TrivyParserPort,
 ) -> IngestionResult:
-    """Convenience function to ingest a Trivy report.
+    """Convenience function for direct invocation of Trivy report ingestion.
+
+    Production code uses ``IngestTrivyReportUseCase`` via DI. This wrapper
+    is provided for scripting, one-off invocations, and integration tests
+    where full DI wiring is unnecessary.
 
     Args:
         report_path: Path to Trivy JSON report

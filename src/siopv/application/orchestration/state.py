@@ -10,12 +10,16 @@ from __future__ import annotations
 
 import operator
 import uuid
-from dataclasses import dataclass, field
 from typing import Annotated, TypedDict
 
 from siopv.application.use_cases.classify_risk import ClassificationResult
 from siopv.domain.entities import VulnerabilityRecord
 from siopv.domain.value_objects import EnrichmentData
+from siopv.domain.value_objects.discrepancy import (
+    DiscrepancyHistory,
+    DiscrepancyResult,
+    ThresholdConfig,
+)
 
 
 class PipelineState(TypedDict, total=False):
@@ -104,79 +108,34 @@ class PipelineState(TypedDict, total=False):
     current_node: str
 
 
-@dataclass(frozen=True)
-class DiscrepancyResult:
-    """Result of discrepancy calculation between ML and LLM scores.
+# DiscrepancyResult, ThresholdConfig, DiscrepancyHistory are re-exported
+# from domain.value_objects.discrepancy for backwards compatibility.
+# New code should import from siopv.domain.value_objects.discrepancy directly.
 
-    Attributes:
-        cve_id: CVE identifier
-        ml_score: ML model risk probability (0.0-1.0)
-        llm_confidence: LLM confidence score (0.0-1.0)
-        discrepancy: Absolute difference |ml_score - llm_confidence|
-        should_escalate: Whether this CVE should be escalated to human review
+
+def get_classifications(
+    state: PipelineState | dict[str, object],
+) -> dict[str, ClassificationResult]:
+    """Get classifications from state with proper typing.
+
+    Casts once at the boundary so callers avoid per-access type:ignore.
     """
-
-    cve_id: str
-    ml_score: float
-    llm_confidence: float
-    discrepancy: float
-    should_escalate: bool
+    return state.get("classifications", {})  # type: ignore[return-value]
 
 
-@dataclass
-class ThresholdConfig:
-    """Configuration for the adaptive uncertainty threshold.
-
-    Attributes:
-        base_threshold: Base discrepancy threshold (default 0.3 from spec)
-        confidence_floor: LLM confidence below this triggers escalation (default 0.7)
-        percentile: Percentile for adaptive threshold calculation (default 90)
-        history_size: Number of historical discrepancies to track (default 500)
-    """
-
-    base_threshold: float = 0.3
-    confidence_floor: float = 0.7
-    percentile: int = 90
-    history_size: int = 500
+def get_llm_confidence(state: PipelineState | dict[str, object]) -> dict[str, float]:
+    """Get llm_confidence from state with proper typing."""
+    return state.get("llm_confidence", {})  # type: ignore[return-value]
 
 
-@dataclass
-class DiscrepancyHistory:
-    """Tracks historical discrepancies for adaptive threshold calculation.
+def get_errors(state: PipelineState | dict[str, object]) -> list[str]:
+    """Get errors list from state with proper typing."""
+    return state.get("errors", [])  # type: ignore[return-value]
 
-    Maintains a rolling window of discrepancies from past evaluations
-    to compute the adaptive percentile-based threshold.
-    """
 
-    values: list[float] = field(default_factory=list)
-    max_size: int = 500
-
-    def add(self, discrepancy: float) -> None:
-        """Add a discrepancy value to history.
-
-        Args:
-            discrepancy: The discrepancy value to add
-        """
-        self.values.append(discrepancy)
-        if len(self.values) > self.max_size:
-            self.values = self.values[-self.max_size :]
-
-    def get_percentile(self, percentile: int) -> float:
-        """Calculate the specified percentile of historical discrepancies.
-
-        Args:
-            percentile: The percentile to calculate (0-100)
-
-        Returns:
-            The percentile value, or 0.3 (base threshold) if no history
-        """
-        if not self.values:
-            return 0.3  # Default base threshold
-
-        sorted_values = sorted(self.values)
-        index = int(len(sorted_values) * percentile / 100)
-        index = min(index, len(sorted_values) - 1)
-        return sorted_values[index]
+def get_escalated_cves(state: PipelineState | dict[str, object]) -> list[str]:
+    """Get escalated_cves list from state with proper typing."""
+    return state.get("escalated_cves", [])  # type: ignore[return-value]
 
 
 def create_initial_state(
@@ -249,4 +208,8 @@ __all__ = [
     "PipelineState",
     "ThresholdConfig",
     "create_initial_state",
+    "get_classifications",
+    "get_errors",
+    "get_escalated_cves",
+    "get_llm_confidence",
 ]

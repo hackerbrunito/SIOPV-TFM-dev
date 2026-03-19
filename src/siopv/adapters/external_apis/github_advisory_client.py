@@ -19,9 +19,10 @@ from tenacity import (
     wait_exponential,
 )
 
+from siopv.adapters.external_apis.base_client import BaseAPIClient
 from siopv.application.ports import GitHubAdvisoryClientPort
 from siopv.domain.exceptions import ExternalAPIError
-from siopv.domain.value_objects import GitHubAdvisory
+from siopv.domain.value_objects import GitHubAdvisory, validate_cve_id
 from siopv.infrastructure.resilience import (
     CircuitBreaker,
     CircuitBreakerError,
@@ -100,7 +101,7 @@ class GitHubAdvisoryClientError(ExternalAPIError):
     """Error from GitHub Advisory API operations."""
 
 
-class GitHubAdvisoryClient(GitHubAdvisoryClientPort):
+class GitHubAdvisoryClient(BaseAPIClient[GitHubAdvisory], GitHubAdvisoryClientPort):
     """GitHub Security Advisories GraphQL API client implementation.
 
     Features:
@@ -142,11 +143,39 @@ class GitHubAdvisoryClient(GitHubAdvisoryClientPort):
             settings: Application settings with GitHub configuration
             client: Optional pre-configured httpx client (for testing)
         """
-        self._graphql_url = settings.github_graphql_url
         self._token = settings.github_token.get_secret_value() if settings.github_token else None
 
+        headers = {
+            "User-Agent": "SIOPV/1.0",
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+        }
+        if self._token:
+            headers["Authorization"] = f"Bearer {self._token}"
+
+        super().__init__(
+            timeout=httpx.Timeout(
+                connect=settings.github_timeout_connect,
+                read=settings.github_timeout_read,
+                write=settings.github_timeout_write,
+                pool=settings.github_timeout_pool,
+            ),
+            headers=headers,
+            cache_max_size=settings.api_client_cache_max_size,
+            client=client,
+            follow_redirects=False,
+        )
+
+        self._graphql_url = settings.github_graphql_url
+
         # Configure rate limiter based on token presence
-        self._rate_limiter = create_github_rate_limiter(has_token=bool(self._token))
+        self._rate_limiter = create_github_rate_limiter(
+            has_token=bool(self._token),
+            rate_with_token=settings.github_rate_limit_with_token,
+            rate_without_token=settings.github_rate_limit_without_token,
+            period_seconds=settings.github_rate_limit_period_seconds,
+            max_queue_size=settings.rate_limiter_max_queue_size,
+        )
 
         # Configure circuit breaker
         self._circuit_breaker = CircuitBreaker(
@@ -155,46 +184,11 @@ class GitHubAdvisoryClient(GitHubAdvisoryClientPort):
             recovery_timeout=settings.circuit_breaker_recovery_timeout,
         )
 
-        # HTTP client configuration
-        self._timeout = httpx.Timeout(connect=5.0, read=30.0, write=5.0, pool=5.0)
-        self._external_client = client
-        self._owned_client: httpx.AsyncClient | None = None
-
-        # Simple in-memory cache
-        self._cache: dict[str, GitHubAdvisory] = {}
-
         logger.info(
             "github_advisory_client_initialized",
             graphql_url=self._graphql_url,
             has_token=bool(self._token),
         )
-
-    async def _get_client(self) -> httpx.AsyncClient:
-        """Get or create HTTP client."""
-        if self._external_client:
-            return self._external_client
-
-        if self._owned_client is None:
-            headers = {
-                "User-Agent": "SIOPV/1.0",
-                "Accept": "application/json",
-                "Content-Type": "application/json",
-            }
-            if self._token:
-                headers["Authorization"] = f"Bearer {self._token}"
-
-            self._owned_client = httpx.AsyncClient(
-                timeout=self._timeout,
-                headers=headers,
-            )
-
-        return self._owned_client
-
-    async def close(self) -> None:
-        """Close HTTP client if owned."""
-        if self._owned_client:
-            await self._owned_client.aclose()
-            self._owned_client = None
 
     @retry(
         retry=retry_if_exception_type((httpx.TimeoutException, httpx.HTTPStatusError)),
@@ -258,10 +252,13 @@ class GitHubAdvisoryClient(GitHubAdvisoryClientPort):
         Returns:
             GitHubAdvisory with package-specific info, or None if not found
         """
+        validate_cve_id(cve_id)
+
         # Check cache first
-        if cve_id in self._cache:
+        cached = self._cache_get(cve_id)
+        if cached is not None:
             logger.debug("github_cache_hit", cve_id=cve_id)
-            return self._cache[cve_id]
+            return cached
 
         try:
             # Apply rate limiting
@@ -282,7 +279,7 @@ class GitHubAdvisoryClient(GitHubAdvisoryClientPort):
 
             # Parse and cache result
             advisory = GitHubAdvisory.from_graphql_response(advisories[0])
-            self._cache[cve_id] = advisory
+            self._cache_set(cve_id, advisory)
 
         except CircuitBreakerError:
             logger.warning("github_circuit_open", cve_id=cve_id)
@@ -394,11 +391,6 @@ class GitHubAdvisoryClient(GitHubAdvisoryClientPort):
                 count=len(advisories),
             )
             return advisories
-
-    def clear_cache(self) -> None:
-        """Clear the in-memory cache."""
-        self._cache.clear()
-        logger.debug("github_cache_cleared")
 
 
 __all__ = ["GitHubAdvisoryClient", "GitHubAdvisoryClientError"]

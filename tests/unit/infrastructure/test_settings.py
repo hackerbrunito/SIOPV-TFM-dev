@@ -13,20 +13,18 @@ from siopv.infrastructure.config.settings import Settings, get_settings
 @pytest.fixture
 def settings_no_env_file(monkeypatch):  # noqa: ARG001
     """Fixture that prevents Settings from loading the .env file."""
-    import os as os_module
-
     env_path = Path(".env")
     env_backup = Path(".env.test_backup")
 
     # Temporarily rename .env to prevent loading
     if env_path.exists():
-        os_module.rename(str(env_path), str(env_backup))
+        env_path.rename(env_backup)
         try:
             yield
         finally:
             # Restore .env
             if env_backup.exists():
-                os_module.rename(str(env_backup), str(env_path))
+                env_backup.rename(env_path)
     else:
         yield
 
@@ -34,7 +32,7 @@ def settings_no_env_file(monkeypatch):  # noqa: ARG001
 # === Basic Settings Tests ===
 
 
-def test_settings_defaults():
+def test_settings_defaults() -> None:
     """Test Settings with default values."""
     # Arrange & Act
     with patch.dict(os.environ, {"SIOPV_ANTHROPIC_API_KEY": "test-key"}, clear=True):
@@ -47,7 +45,7 @@ def test_settings_defaults():
     assert settings.log_level == "INFO"
 
 
-def test_settings_from_env():
+def test_settings_from_env() -> None:
     """Test Settings loads from environment variables with SIOPV_ prefix."""
     # Arrange
     env_vars = {
@@ -71,7 +69,7 @@ def test_settings_from_env():
 
 
 @pytest.mark.usefixtures("settings_no_env_file")
-def test_settings_anthropic_api_key_required():
+def test_settings_anthropic_api_key_required() -> None:
     """Test Settings requires anthropic_api_key."""
     # Arrange & Act & Assert
     with patch.dict(os.environ, {}, clear=True), pytest.raises(ValidationError) as exc_info:
@@ -84,7 +82,7 @@ def test_settings_anthropic_api_key_required():
 
 
 @pytest.mark.usefixtures("settings_no_env_file")
-def test_settings_nvd_defaults():
+def test_settings_nvd_defaults() -> None:
     """Test NVD API default configuration."""
     # Arrange & Act
     with patch.dict(os.environ, {"SIOPV_ANTHROPIC_API_KEY": "test-key"}, clear=True):
@@ -93,16 +91,18 @@ def test_settings_nvd_defaults():
     # Assert
     assert settings.nvd_api_key is None
     assert settings.nvd_base_url == "https://services.nvd.nist.gov/rest/json/cves/2.0"
-    assert settings.nvd_rate_limit == 5
+    assert settings.nvd_rate_limit_with_key == 50
+    assert settings.nvd_rate_limit_without_key == 5
+    assert settings.nvd_rate_limit_period_seconds == 30.0
 
 
-def test_settings_nvd_with_api_key():
+def test_settings_nvd_with_api_key() -> None:
     """Test NVD configuration with API key."""
     # Arrange
     env_vars = {
         "SIOPV_ANTHROPIC_API_KEY": "test-key",
         "SIOPV_NVD_API_KEY": "nvd-key-123",
-        "SIOPV_NVD_RATE_LIMIT": "50",
+        "SIOPV_NVD_RATE_LIMIT_WITH_KEY": "100",
     }
 
     # Act
@@ -112,10 +112,10 @@ def test_settings_nvd_with_api_key():
     # Assert
     assert settings.nvd_api_key is not None
     assert settings.nvd_api_key.get_secret_value() == "nvd-key-123"
-    assert settings.nvd_rate_limit == 50
+    assert settings.nvd_rate_limit_with_key == 100
 
 
-def test_settings_github_configuration():
+def test_settings_github_configuration() -> None:
     """Test GitHub configuration."""
     # Arrange
     env_vars = {
@@ -133,7 +133,7 @@ def test_settings_github_configuration():
     assert settings.github_graphql_url == "https://api.github.com/graphql"
 
 
-def test_settings_epss_defaults():
+def test_settings_epss_defaults() -> None:
     """Test EPSS API defaults."""
     # Arrange & Act
     with patch.dict(os.environ, {"SIOPV_ANTHROPIC_API_KEY": "test-key"}, clear=True):
@@ -147,7 +147,7 @@ def test_settings_epss_defaults():
 
 
 @pytest.mark.usefixtures("settings_no_env_file")
-def test_settings_jira_optional():
+def test_settings_jira_optional() -> None:
     """Test Jira configuration is optional."""
     # Arrange & Act
     with patch.dict(os.environ, {"SIOPV_ANTHROPIC_API_KEY": "test-key"}, clear=True):
@@ -160,7 +160,7 @@ def test_settings_jira_optional():
     assert settings.jira_project_key is None
 
 
-def test_settings_jira_full_configuration():
+def test_settings_jira_full_configuration() -> None:
     """Test Jira with all fields configured."""
     # Arrange
     env_vars = {
@@ -185,7 +185,7 @@ def test_settings_jira_full_configuration():
 # === ChromaDB Tests ===
 
 
-def test_settings_chroma_defaults():
+def test_settings_chroma_defaults() -> None:
     """Test ChromaDB default configuration."""
     # Arrange & Act
     with patch.dict(os.environ, {"SIOPV_ANTHROPIC_API_KEY": "test-key"}, clear=True):
@@ -197,7 +197,7 @@ def test_settings_chroma_defaults():
     assert settings.chroma_cache_size_mb == 4096
 
 
-def test_settings_chroma_custom_path():
+def test_settings_chroma_custom_path() -> None:
     """Test ChromaDB with custom persist directory."""
     # Arrange
     env_vars = {
@@ -216,7 +216,7 @@ def test_settings_chroma_custom_path():
 # === ML Model Tests ===
 
 
-def test_settings_ml_model_defaults():
+def test_settings_ml_model_defaults() -> None:
     """Test ML model default configuration."""
     # Arrange & Act
     with patch.dict(os.environ, {"SIOPV_ANTHROPIC_API_KEY": "test-key"}, clear=True):
@@ -226,7 +226,7 @@ def test_settings_ml_model_defaults():
     assert settings.model_path == Path("./models/xgboost_risk_model.json")
 
 
-def test_settings_ml_model_custom():
+def test_settings_ml_model_custom() -> None:
     """Test ML model with custom path."""
     # Arrange
     env_vars = {
@@ -245,7 +245,7 @@ def test_settings_ml_model_custom():
 # === Circuit Breaker Tests ===
 
 
-def test_settings_circuit_breaker_defaults():
+def test_settings_circuit_breaker_defaults() -> None:
     """Test circuit breaker default configuration."""
     # Arrange & Act
     with patch.dict(os.environ, {"SIOPV_ANTHROPIC_API_KEY": "test-key"}, clear=True):
@@ -256,7 +256,7 @@ def test_settings_circuit_breaker_defaults():
     assert settings.circuit_breaker_recovery_timeout == 60
 
 
-def test_settings_circuit_breaker_custom():
+def test_settings_circuit_breaker_custom() -> None:
     """Test circuit breaker with custom values."""
     # Arrange
     env_vars = {
@@ -277,7 +277,7 @@ def test_settings_circuit_breaker_custom():
 # === Claude Model Configuration Tests ===
 
 
-def test_settings_claude_model_defaults():
+def test_settings_claude_model_defaults() -> None:
     """Test Claude model defaults."""
     # Arrange & Act
     with patch.dict(os.environ, {"SIOPV_ANTHROPIC_API_KEY": "test-key"}, clear=True):
@@ -285,10 +285,10 @@ def test_settings_claude_model_defaults():
 
     # Assert
     assert settings.claude_haiku_model == "claude-haiku-4-5-20251001"
-    assert settings.claude_sonnet_model == "claude-sonnet-4-5-20250929"
+    assert settings.claude_sonnet_model == "claude-sonnet-4-6"
 
 
-def test_settings_claude_models_custom():
+def test_settings_claude_models_custom() -> None:
     """Test Claude models with custom values."""
     # Arrange
     env_vars = {
@@ -309,7 +309,7 @@ def test_settings_claude_models_custom():
 # === Environment Validation Tests ===
 
 
-def test_settings_environment_literal_validation():
+def test_settings_environment_literal_validation() -> None:
     """Test environment accepts only valid literals."""
     # Arrange
     env_vars = {
@@ -325,7 +325,7 @@ def test_settings_environment_literal_validation():
     assert settings.environment == "production"
 
 
-def test_settings_log_level_literal_validation():
+def test_settings_log_level_literal_validation() -> None:
     """Test log_level accepts only valid literals."""
     # Arrange
     env_vars = {
@@ -345,7 +345,7 @@ def test_settings_log_level_literal_validation():
 
 
 @pytest.mark.usefixtures("settings_no_env_file")
-def test_settings_openfga_optional():
+def test_settings_openfga_optional() -> None:
     """Test OpenFGA configuration is optional."""
     # Arrange & Act
     with patch.dict(os.environ, {"SIOPV_ANTHROPIC_API_KEY": "test-key"}, clear=True):
@@ -356,7 +356,7 @@ def test_settings_openfga_optional():
     assert settings.openfga_store_id is None
 
 
-def test_settings_openfga_configured():
+def test_settings_openfga_configured() -> None:
     """Test OpenFGA with configuration."""
     # Arrange
     env_vars = {
@@ -378,7 +378,7 @@ def test_settings_openfga_configured():
 
 
 @pytest.mark.usefixtures("settings_no_env_file")
-def test_settings_openfga_auth_defaults():
+def test_settings_openfga_auth_defaults() -> None:
     """Test OpenFGA auth fields have correct defaults."""
     with patch.dict(os.environ, {"SIOPV_ANTHROPIC_API_KEY": "test-key"}, clear=True):
         settings = Settings()
@@ -391,7 +391,7 @@ def test_settings_openfga_auth_defaults():
     assert settings.openfga_api_token_issuer == ""
 
 
-def test_settings_openfga_api_token_from_env():
+def test_settings_openfga_api_token_from_env() -> None:
     """Test OpenFGA API token loads from env as SecretStr."""
     env_vars = {
         "SIOPV_ANTHROPIC_API_KEY": "test-key",
@@ -406,7 +406,7 @@ def test_settings_openfga_api_token_from_env():
     assert settings.openfga_auth_method == "api_token"
 
 
-def test_settings_openfga_oidc_from_env():
+def test_settings_openfga_oidc_from_env() -> None:
     """Test OpenFGA OIDC settings load from env."""
     env_vars = {
         "SIOPV_ANTHROPIC_API_KEY": "test-key",
@@ -429,7 +429,7 @@ def test_settings_openfga_oidc_from_env():
 # === get_settings() Cache Tests ===
 
 
-def test_get_settings_returns_cached_instance():
+def test_get_settings_returns_cached_instance() -> None:
     """Test get_settings() returns cached singleton."""
     # Arrange
     with patch.dict(os.environ, {"SIOPV_ANTHROPIC_API_KEY": "test-key"}, clear=True):
@@ -441,7 +441,7 @@ def test_get_settings_returns_cached_instance():
     assert settings1 is settings2
 
 
-def test_get_settings_cache_info():
+def test_get_settings_cache_info() -> None:
     """Test get_settings() uses lru_cache."""
     # Arrange
     get_settings.cache_clear()
@@ -459,7 +459,7 @@ def test_get_settings_cache_info():
 # === SecretStr Tests ===
 
 
-def test_settings_secret_str_hidden():
+def test_settings_secret_str_hidden() -> None:
     """Test SecretStr fields don't expose secrets in repr."""
     # Arrange
     env_vars = {
@@ -478,7 +478,7 @@ def test_settings_secret_str_hidden():
     assert "SecretStr" in settings_repr
 
 
-def test_settings_secret_str_get_secret_value():
+def test_settings_secret_str_get_secret_value() -> None:
     """Test SecretStr.get_secret_value() returns actual value."""
     # Arrange
     env_vars = {
@@ -496,7 +496,7 @@ def test_settings_secret_str_get_secret_value():
 # === Extra Fields Tests ===
 
 
-def test_settings_ignores_extra_fields():
+def test_settings_ignores_extra_fields() -> None:
     """Test Settings ignores unknown environment variables."""
     # Arrange
     env_vars = {
@@ -511,16 +511,12 @@ def test_settings_ignores_extra_fields():
         assert settings.app_name == "SIOPV"  # Normal field works
 
 
-# === OpenFGA Validation Warning Tests ===
+# === OpenFGA Validation Error Tests ===
 
 
-def test_settings_openfga_auth_method_api_token_missing_token_warns():
-    """Test warning when api_token auth method but token not set."""
+def test_settings_openfga_auth_method_api_token_missing_token_raises() -> None:
+    """Test ValueError when api_token auth method but token not set."""
     with (
-        pytest.warns(
-            UserWarning,
-            match="SIOPV_OPENFGA_AUTH_METHOD=api_token but SIOPV_OPENFGA_API_TOKEN is not set",
-        ),
         patch.dict(
             os.environ,
             {
@@ -529,17 +525,20 @@ def test_settings_openfga_auth_method_api_token_missing_token_warns():
             },
             clear=True,
         ),
+        pytest.raises(
+            ValidationError,
+            match="SIOPV_OPENFGA_AUTH_METHOD=api_token but SIOPV_OPENFGA_API_TOKEN is not set",
+        ),
     ):
         Settings()
 
 
-def test_settings_openfga_auth_method_client_credentials_missing_client_id_warns():
-    """Test warning when client_credentials auth method but client_id not set."""
+def test_settings_openfga_auth_method_client_credentials_missing_client_id_raises() -> None:
+    """Test ValueError when client_credentials auth method but client_id not set."""
     expected_match = (
         "SIOPV_OPENFGA_AUTH_METHOD=client_credentials but missing: SIOPV_OPENFGA_CLIENT_ID"
     )
     with (
-        pytest.warns(UserWarning, match=expected_match),
         patch.dict(
             os.environ,
             {
@@ -550,17 +549,17 @@ def test_settings_openfga_auth_method_client_credentials_missing_client_id_warns
             },
             clear=True,
         ),
+        pytest.raises(ValidationError, match=expected_match),
     ):
         Settings()
 
 
-def test_settings_openfga_auth_method_client_credentials_missing_client_secret_warns():
-    """Test warning when client_credentials auth method but client_secret not set."""
+def test_settings_openfga_auth_method_client_credentials_missing_client_secret_raises() -> None:
+    """Test ValueError when client_credentials auth method but client_secret not set."""
     expected_match = (
         "SIOPV_OPENFGA_AUTH_METHOD=client_credentials but missing: SIOPV_OPENFGA_CLIENT_SECRET"
     )
     with (
-        pytest.warns(UserWarning, match=expected_match),
         patch.dict(
             os.environ,
             {
@@ -571,17 +570,17 @@ def test_settings_openfga_auth_method_client_credentials_missing_client_secret_w
             },
             clear=True,
         ),
+        pytest.raises(ValidationError, match=expected_match),
     ):
         Settings()
 
 
-def test_settings_openfga_auth_method_client_credentials_missing_issuer_warns():
-    """Test warning when client_credentials auth method but api_token_issuer not set."""
+def test_settings_openfga_auth_method_client_credentials_missing_issuer_raises() -> None:
+    """Test ValueError when client_credentials auth method but api_token_issuer not set."""
     expected_match = (
         "SIOPV_OPENFGA_AUTH_METHOD=client_credentials but missing: SIOPV_OPENFGA_API_TOKEN_ISSUER"
     )
     with (
-        pytest.warns(UserWarning, match=expected_match),
         patch.dict(
             os.environ,
             {
@@ -592,12 +591,13 @@ def test_settings_openfga_auth_method_client_credentials_missing_issuer_warns():
             },
             clear=True,
         ),
+        pytest.raises(ValidationError, match=expected_match),
     ):
         Settings()
 
 
-def test_settings_openfga_auth_method_client_credentials_missing_all_warns():
-    """Test warning when client_credentials auth method but all required fields missing."""
+def test_settings_openfga_auth_method_client_credentials_missing_all_raises() -> None:
+    """Test ValueError when client_credentials auth method but all required fields missing."""
     expected_match = (
         "SIOPV_OPENFGA_AUTH_METHOD=client_credentials"
         " but missing: SIOPV_OPENFGA_CLIENT_ID,"
@@ -605,7 +605,6 @@ def test_settings_openfga_auth_method_client_credentials_missing_all_warns():
         " SIOPV_OPENFGA_API_TOKEN_ISSUER"
     )
     with (
-        pytest.warns(UserWarning, match=expected_match),
         patch.dict(
             os.environ,
             {
@@ -614,5 +613,6 @@ def test_settings_openfga_auth_method_client_credentials_missing_all_warns():
             },
             clear=True,
         ),
+        pytest.raises(ValidationError, match=expected_match),
     ):
         Settings()

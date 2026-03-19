@@ -19,6 +19,28 @@ from siopv.infrastructure.config import get_settings
 logger = structlog.get_logger(__name__)
 
 
+def _check_spacy_model(model_name: str = "en_core_web_lg") -> None:
+    """Check that the required spaCy model is installed and log a warning if not.
+
+    Presidio's AnalyzerEngine requires a spaCy NLP model for NER. Without it,
+    initialization fails with a cryptic OSError. This guard surfaces the issue
+    early with a clear, actionable message.
+    """
+    try:
+        import spacy  # type: ignore[import-not-found]  # noqa: PLC0415
+
+        spacy.load(model_name)
+        logger.debug("spacy_model_available", model=model_name)
+    except OSError:
+        logger.warning(
+            "spacy_model_missing",
+            model=model_name,
+            fix="Install with: uv pip install "
+            f"https://github.com/explosion/spacy-models/releases/download/"
+            f"{model_name}-3.8.0/{model_name}-3.8.0-py3-none-any.whl",
+        )
+
+
 def create_presidio_adapter() -> PresidioAdapter:
     """Create a configured PresidioAdapter from application settings.
 
@@ -26,6 +48,8 @@ def create_presidio_adapter() -> PresidioAdapter:
         PresidioAdapter with Presidio engines initialized and optional
         Haiku semantic validator configured.
     """
+    _check_spacy_model()
+
     settings = get_settings()
     api_key = settings.anthropic_api_key.get_secret_value()
     haiku_model = settings.claude_haiku_model
@@ -40,6 +64,9 @@ def create_presidio_adapter() -> PresidioAdapter:
         api_key=api_key,
         haiku_model=haiku_model,
         enable_semantic_validation=bool(api_key),
+        validation_max_tokens=settings.haiku_validation_max_tokens,
+        min_short_text_length=settings.haiku_min_short_text_length,
+        max_text_length=settings.haiku_max_text_length,
     )
 
     logger.info("presidio_adapter_created", adapter_class="PresidioAdapter")
@@ -81,8 +108,10 @@ def create_dual_layer_dlp_adapter() -> DualLayerDLPAdapter:
     )
 
     adapter = create_dual_layer_adapter(
-        api_key=api_key,
+        api_key,
         haiku_model=haiku_model,
+        haiku_max_tokens=settings.haiku_max_tokens,
+        max_text_length=settings.haiku_max_text_length,
     )
 
     logger.info("dual_layer_dlp_adapter_created", adapter_class="DualLayerDLPAdapter")

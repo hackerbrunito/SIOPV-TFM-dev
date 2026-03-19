@@ -9,9 +9,9 @@ These represent the output of the ML classification pipeline:
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Annotated
+from typing import Annotated, Self
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from siopv.domain.constants import (
     CONFIDENCE_CENTER_PROBABILITY,
@@ -45,11 +45,16 @@ class SHAPValues(BaseModel):
         description="Expected model output (base value)",
     )
 
-    @field_validator("shap_values")
-    @classmethod
-    def validate_shap_values(cls, v: list[float]) -> list[float]:
+    @model_validator(mode="after")
+    def validate_shap_feature_length(self) -> Self:
         """Validate SHAP values have same length as feature names."""
-        return v
+        if len(self.shap_values) != len(self.feature_names):
+            msg = (
+                f"shap_values length ({len(self.shap_values)}) must match "
+                f"feature_names length ({len(self.feature_names)})"
+            )
+            raise ValueError(msg)
+        return self
 
     def to_dict(self) -> dict[str, float]:
         """Convert to feature name -> SHAP value mapping."""

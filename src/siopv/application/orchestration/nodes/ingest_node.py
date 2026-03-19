@@ -104,7 +104,9 @@ def ingest_node_from_dict(
 ) -> dict[str, object]:
     """Execute ingestion from a dictionary (for API/testing).
 
-    Alternative entry point when the report is already parsed JSON.
+    Public API for programmatic and testing use — not called by the CLI pipeline.
+    Alternative entry point when the report is already parsed JSON (e.g., received
+    via a future REST API or used directly in integration tests).
 
     Args:
         state: Current pipeline state

@@ -280,7 +280,13 @@ class TestPresidioAdapterInit:
                 api_key="key", haiku_model="custom-model", enable_semantic_validation=True
             )
 
-        mock_haiku_cls.assert_called_once_with(api_key="key", model="custom-model")
+        mock_haiku_cls.assert_called_once_with(
+            api_key="key",
+            model="custom-model",
+            validation_max_tokens=10,
+            min_short_text_length=20,
+            max_text_length=4000,
+        )
 
 
 # ---------------------------------------------------------------------------

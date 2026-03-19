@@ -7,7 +7,7 @@ and output directory creation.
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -136,18 +136,15 @@ def _make_state(
     return state
 
 
+_MODEL_PATH = Path("./models/xgboost_risk_model.json")
+
+
 @pytest.fixture
 def adapter() -> Fpdf2Adapter:
-    return Fpdf2Adapter()
-
-
-@pytest.fixture
-def mock_settings() -> MagicMock:
-    settings = MagicMock()
-    settings.output_dir = Path("./output")
-    settings.pdf_include_cot = False
-    settings.model_path = Path("./models/xgboost_risk_model.json")
-    return settings
+    return Fpdf2Adapter(
+        pdf_include_cot=False,
+        model_path=_MODEL_PATH,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -194,15 +191,24 @@ class TestRenderLimeChart:
 # ---------------------------------------------------------------------------
 
 
+def _generate_pdf(
+    adapter: Fpdf2Adapter,
+    tmp_path: Path,
+    state: dict,
+) -> str:
+    """Generate PDF and return the result path."""
+    output_path = str(tmp_path / "report.pdf")
+    result = adapter.generate(state, output_path)
+    assert Path(result).exists()
+    return result
+
+
 class TestFpdf2AdapterGenerate:
-    def test_generates_pdf_file(
-        self, adapter: Fpdf2Adapter, mock_settings: MagicMock, tmp_path: Path
-    ) -> None:
+    def test_generates_pdf_file(self, adapter: Fpdf2Adapter, tmp_path: Path) -> None:
         state = _make_state()
         output_path = str(tmp_path / "reports" / "report.pdf")
 
-        with patch("siopv.adapters.output.fpdf2_adapter.get_settings", return_value=mock_settings):
-            result = adapter.generate(state, output_path)
+        result = adapter.generate(state, output_path)
 
         assert Path(result).exists()
         assert result.endswith(".pdf")
@@ -211,184 +217,130 @@ class TestFpdf2AdapterGenerate:
             header = f.read(5)
         assert header == b"%PDF-"
 
-    def test_file_naming_convention(
-        self, adapter: Fpdf2Adapter, mock_settings: MagicMock, tmp_path: Path
-    ) -> None:
+    def test_file_naming_convention(self, adapter: Fpdf2Adapter, tmp_path: Path) -> None:
         state = _make_state()
         output_path = str(tmp_path / "report.pdf")
 
-        with patch("siopv.adapters.output.fpdf2_adapter.get_settings", return_value=mock_settings):
-            result = adapter.generate(state, output_path)
+        result = adapter.generate(state, output_path)
 
         filename = Path(result).name
         assert filename.startswith("audit-report-test-thread-001-")
         assert filename.endswith(".pdf")
 
-    def test_output_dir_creation(
-        self, adapter: Fpdf2Adapter, mock_settings: MagicMock, tmp_path: Path
-    ) -> None:
+    def test_output_dir_creation(self, adapter: Fpdf2Adapter, tmp_path: Path) -> None:
         nested_dir = tmp_path / "deep" / "nested" / "dir"
         output_path = str(nested_dir / "report.pdf")
 
-        with patch("siopv.adapters.output.fpdf2_adapter.get_settings", return_value=mock_settings):
-            result = adapter.generate(_make_state(), output_path)
+        result = adapter.generate(_make_state(), output_path)
 
         assert nested_dir.exists()
         assert Path(result).exists()
 
-    def test_empty_vulnerabilities(
-        self, adapter: Fpdf2Adapter, mock_settings: MagicMock, tmp_path: Path
-    ) -> None:
+    def test_empty_vulnerabilities(self, adapter: Fpdf2Adapter, tmp_path: Path) -> None:
         state = _make_state(num_vulns=0)
         output_path = str(tmp_path / "report.pdf")
 
-        with patch("siopv.adapters.output.fpdf2_adapter.get_settings", return_value=mock_settings):
-            result = adapter.generate(state, output_path)
+        result = adapter.generate(state, output_path)
 
         assert Path(result).exists()
 
 
-def _generate_and_extract_text(
-    adapter: Fpdf2Adapter,
-    mock_settings: MagicMock,
-    tmp_path: Path,
-    state: dict,
-) -> str:
-    """Generate PDF and extract text using fpdf2's built-in output method.
-
-    Since fpdf2 uses FlateDecode compression, raw byte search doesn't work.
-    We generate without compression by using the adapter, then verify via page count.
-    """
-    output_path = str(tmp_path / "report.pdf")
-    with patch("siopv.adapters.output.fpdf2_adapter.get_settings", return_value=mock_settings):
-        result = adapter.generate(state, output_path)
-    assert Path(result).exists()
-    return result
-
-
 class TestSectionExecutiveSummary:
-    def test_renders_without_error(
-        self, adapter: Fpdf2Adapter, mock_settings: MagicMock, tmp_path: Path
-    ) -> None:
+    def test_renders_without_error(self, adapter: Fpdf2Adapter, tmp_path: Path) -> None:
         state = _make_state()
-        result = _generate_and_extract_text(adapter, mock_settings, tmp_path, state)
+        result = _generate_pdf(adapter, tmp_path, state)
         assert Path(result).stat().st_size > 1000
 
-    def test_renders_with_no_vulns(
-        self, adapter: Fpdf2Adapter, mock_settings: MagicMock, tmp_path: Path
-    ) -> None:
+    def test_renders_with_no_vulns(self, adapter: Fpdf2Adapter, tmp_path: Path) -> None:
         state = _make_state(num_vulns=0)
-        result = _generate_and_extract_text(adapter, mock_settings, tmp_path, state)
+        result = _generate_pdf(adapter, tmp_path, state)
         assert Path(result).stat().st_size > 500
 
 
 class TestSectionVulnerabilityIndex:
-    def test_renders_table(
-        self, adapter: Fpdf2Adapter, mock_settings: MagicMock, tmp_path: Path
-    ) -> None:
+    def test_renders_table(self, adapter: Fpdf2Adapter, tmp_path: Path) -> None:
         state = _make_state()
-        result = _generate_and_extract_text(adapter, mock_settings, tmp_path, state)
+        result = _generate_pdf(adapter, tmp_path, state)
         # PDF with 3 vulns should be larger than empty
         assert Path(result).stat().st_size > 2000
 
 
 class TestSectionDetailCards:
-    def test_renders_cards(
-        self, adapter: Fpdf2Adapter, mock_settings: MagicMock, tmp_path: Path
-    ) -> None:
+    def test_renders_cards(self, adapter: Fpdf2Adapter, tmp_path: Path) -> None:
         state = _make_state(num_vulns=2)
-        result = _generate_and_extract_text(adapter, mock_settings, tmp_path, state)
+        result = _generate_pdf(adapter, tmp_path, state)
         assert Path(result).stat().st_size > 2000
 
 
 class TestSectionHitlLog:
-    def test_no_escalations(
-        self, adapter: Fpdf2Adapter, mock_settings: MagicMock, tmp_path: Path
-    ) -> None:
+    def test_no_escalations(self, adapter: Fpdf2Adapter, tmp_path: Path) -> None:
         state = _make_state(with_escalation=False)
-        result = _generate_and_extract_text(adapter, mock_settings, tmp_path, state)
+        result = _generate_pdf(adapter, tmp_path, state)
         assert Path(result).exists()
 
-    def test_with_escalations(
-        self, adapter: Fpdf2Adapter, mock_settings: MagicMock, tmp_path: Path
-    ) -> None:
+    def test_with_escalations(self, adapter: Fpdf2Adapter, tmp_path: Path) -> None:
         state = _make_state(with_escalation=True)
-        result = _generate_and_extract_text(adapter, mock_settings, tmp_path, state)
+        result = _generate_pdf(adapter, tmp_path, state)
         # Escalation data adds content, so PDF should be larger
         no_esc_state = _make_state(with_escalation=False)
         no_esc_path = str(tmp_path / "no_esc")
         Path(no_esc_path).mkdir()
-        no_esc_result = _generate_and_extract_text(
-            adapter, mock_settings, Path(no_esc_path), no_esc_state
-        )
+        no_esc_result = _generate_pdf(adapter, Path(no_esc_path), no_esc_state)
         assert Path(result).stat().st_size >= Path(no_esc_result).stat().st_size
 
 
 class TestSectionMlTransparency:
-    def test_renders_ml_section(
-        self, adapter: Fpdf2Adapter, mock_settings: MagicMock, tmp_path: Path
-    ) -> None:
+    def test_renders_ml_section(self, adapter: Fpdf2Adapter, tmp_path: Path) -> None:
         state = _make_state()
-        result = _generate_and_extract_text(adapter, mock_settings, tmp_path, state)
+        result = _generate_pdf(adapter, tmp_path, state)
         assert Path(result).stat().st_size > 2000
 
 
 class TestSectionDlpAudit:
-    def test_no_dlp(self, adapter: Fpdf2Adapter, mock_settings: MagicMock, tmp_path: Path) -> None:
+    def test_no_dlp(self, adapter: Fpdf2Adapter, tmp_path: Path) -> None:
         state = _make_state(with_dlp=False)
-        result = _generate_and_extract_text(adapter, mock_settings, tmp_path, state)
+        result = _generate_pdf(adapter, tmp_path, state)
         assert Path(result).exists()
 
-    def test_with_dlp(
-        self, adapter: Fpdf2Adapter, mock_settings: MagicMock, tmp_path: Path
-    ) -> None:
+    def test_with_dlp(self, adapter: Fpdf2Adapter, tmp_path: Path) -> None:
         state = _make_state(with_dlp=True)
-        result = _generate_and_extract_text(adapter, mock_settings, tmp_path, state)
+        result = _generate_pdf(adapter, tmp_path, state)
         assert Path(result).exists()
 
 
 class TestSectionRemediationTimeline:
-    def test_renders_timeline(
-        self, adapter: Fpdf2Adapter, mock_settings: MagicMock, tmp_path: Path
-    ) -> None:
+    def test_renders_timeline(self, adapter: Fpdf2Adapter, tmp_path: Path) -> None:
         state = _make_state()
-        result = _generate_and_extract_text(adapter, mock_settings, tmp_path, state)
+        result = _generate_pdf(adapter, tmp_path, state)
         assert Path(result).stat().st_size > 2000
 
 
 class TestCotFlag:
-    def test_cot_disabled_by_default(
-        self, adapter: Fpdf2Adapter, mock_settings: MagicMock, tmp_path: Path
-    ) -> None:
+    def test_cot_disabled_by_default(self, adapter: Fpdf2Adapter, tmp_path: Path) -> None:
         state = _make_state(with_errors=True)
-        mock_settings.pdf_include_cot = False
-        result = _generate_and_extract_text(adapter, mock_settings, tmp_path, state)
+        result = _generate_pdf(adapter, tmp_path, state)
         size_without = Path(result).stat().st_size
-        # CoT disabled = fewer pages
-        mock_settings.pdf_include_cot = True
-        cot_path = str(tmp_path / "cot")
-        Path(cot_path).mkdir()
-        result_with = _generate_and_extract_text(adapter, mock_settings, Path(cot_path), state)
+        # CoT enabled = more pages
+        cot_adapter = Fpdf2Adapter(pdf_include_cot=True, model_path=_MODEL_PATH)
+        cot_path = tmp_path / "cot"
+        cot_path.mkdir()
+        result_with = _generate_pdf(cot_adapter, cot_path, state)
         size_with = Path(result_with).stat().st_size
         assert size_with > size_without
 
-    def test_cot_enabled(
-        self, adapter: Fpdf2Adapter, mock_settings: MagicMock, tmp_path: Path
-    ) -> None:
+    def test_cot_enabled(self, tmp_path: Path) -> None:
         state = _make_state(with_errors=True)
-        mock_settings.pdf_include_cot = True
-        result = _generate_and_extract_text(adapter, mock_settings, tmp_path, state)
+        cot_adapter = Fpdf2Adapter(pdf_include_cot=True, model_path=_MODEL_PATH)
+        result = _generate_pdf(cot_adapter, tmp_path, state)
         assert Path(result).stat().st_size > 2000
 
 
 class TestFullReport:
-    def test_all_features_combined(
-        self, adapter: Fpdf2Adapter, mock_settings: MagicMock, tmp_path: Path
-    ) -> None:
+    def test_all_features_combined(self, tmp_path: Path) -> None:
         """Generate a full report with all features enabled."""
         state = _make_state(num_vulns=3, with_escalation=True, with_dlp=True, with_errors=True)
-        mock_settings.pdf_include_cot = True
-        result = _generate_and_extract_text(adapter, mock_settings, tmp_path, state)
+        cot_adapter = Fpdf2Adapter(pdf_include_cot=True, model_path=_MODEL_PATH)
+        result = _generate_pdf(cot_adapter, tmp_path, state)
         content = Path(result).read_bytes()
         assert content[:5] == b"%PDF-"
         # Full report with 3 vulns + all features should be substantial

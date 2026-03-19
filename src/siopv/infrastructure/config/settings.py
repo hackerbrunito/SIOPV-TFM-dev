@@ -3,7 +3,6 @@
 Configuration loaded from environment variables and .env file.
 """
 
-import warnings
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal, Self
@@ -31,23 +30,54 @@ class Settings(BaseSettings):
     # === Anthropic (Claude) ===
     anthropic_api_key: SecretStr = Field(default=...)
     claude_haiku_model: str = "claude-haiku-4-5-20251001"
-    claude_sonnet_model: str = "claude-sonnet-4-5-20250929"
+    claude_sonnet_model: str = "claude-sonnet-4-6"
+    llm_max_context_length: int = 6_000
+    llm_analysis_max_tokens: int = 1024
+    llm_confidence_max_tokens: int = 128
+    haiku_max_text_length: int = 4_000
+    haiku_max_tokens: int = 512
+    haiku_validation_max_tokens: int = 10
+    haiku_min_short_text_length: int = 20
 
     # === NVD API ===
     nvd_api_key: SecretStr | None = None
     nvd_base_url: str = "https://services.nvd.nist.gov/rest/json/cves/2.0"
-    nvd_rate_limit: int = 5  # requests per 30 seconds (50 with API key)
+    nvd_rate_limit_with_key: int = 50
+    nvd_rate_limit_without_key: int = 5
+    nvd_rate_limit_period_seconds: float = 30.0
+    nvd_timeout_connect: float = 5.0
+    nvd_timeout_read: float = 30.0
+    nvd_timeout_write: float = 5.0
+    nvd_timeout_pool: float = 5.0
+    nvd_max_concurrent: int = 5
 
     # === GitHub Security Advisories ===
     github_token: SecretStr | None = None
     github_graphql_url: str = "https://api.github.com/graphql"
+    github_rate_limit_with_token: int = 5000
+    github_rate_limit_without_token: int = 60
+    github_rate_limit_period_seconds: float = 3600.0
+    github_timeout_connect: float = 5.0
+    github_timeout_read: float = 30.0
+    github_timeout_write: float = 5.0
+    github_timeout_pool: float = 5.0
 
     # === EPSS API ===
     epss_base_url: str = "https://api.first.org/data/v1/epss"
+    epss_rate_limit_rps: float = 10.0
+    epss_burst_size: int = 20
+    epss_timeout_connect: float = 5.0
+    epss_timeout_read: float = 15.0
+    epss_timeout_write: float = 5.0
+    epss_timeout_pool: float = 5.0
+    epss_batch_chunk_size: int = 100
 
     # === Tavily Search ===
     tavily_api_key: SecretStr | None = None
     tavily_base_url: str = "https://api.tavily.com/search"
+
+    # === Rate Limiter ===
+    rate_limiter_max_queue_size: int = 100
 
     # === Jira ===
     jira_base_url: str | None = None
@@ -76,10 +106,8 @@ class Settings(BaseSettings):
     def _validate_openfga_auth(self) -> Self:
         """Validate OpenFGA auth configuration consistency."""
         if self.openfga_auth_method == "api_token" and not self.openfga_api_token:
-            warnings.warn(
-                "SIOPV_OPENFGA_AUTH_METHOD=api_token but SIOPV_OPENFGA_API_TOKEN is not set",
-                stacklevel=2,
-            )
+            msg = "SIOPV_OPENFGA_AUTH_METHOD=api_token but SIOPV_OPENFGA_API_TOKEN is not set"
+            raise ValueError(msg)
         if self.openfga_auth_method == "client_credentials":
             missing = []
             if not self.openfga_client_id:
@@ -93,7 +121,7 @@ class Settings(BaseSettings):
                     "SIOPV_OPENFGA_AUTH_METHOD=client_credentials but missing: "
                     f"{', '.join(missing)}"
                 )
-                warnings.warn(msg, stacklevel=2)
+                raise ValueError(msg)
         return self
 
     # === OIDC Authentication (API clients → SIOPV) ===
@@ -117,8 +145,36 @@ class Settings(BaseSettings):
                 raise ValueError(msg)
         return self
 
+    # === Uncertainty Threshold (spec section 3.4) ===
+    uncertainty_threshold: float = 0.3
+    confidence_floor: float = 0.7
+    adaptive_percentile: int = 90
+    discrepancy_history_size: int = 500
+    default_confidence: float = 0.5
+
+    # === Human-in-the-Loop Timeouts ===
+    hitl_timeout_level1_hours: int = 4
+    hitl_timeout_level2_hours: int = 8
+    hitl_timeout_level3_hours: int = 24
+    review_deadline_hours: int = 24
+
     # === ML Model ===
     model_path: Path = Path("./models/xgboost_risk_model.json")
+    # Defined for configurability. Wiring to ML loader is a future task.
+    model_base_path: Path = Path("./models")
+    model_max_size_bytes: int = 104_857_600  # 100MB
+    model_signing_key: SecretStr | None = None  # HMAC key for model integrity
+
+    # === Database ===
+    # Defined for future general-purpose persistence layer (audit logs, metrics
+    # storage). Current pipeline uses checkpoint_db_path for LangGraph SQLite
+    # checkpointer. Wiring to a persistence adapter is a future task.
+    database_url: SecretStr = SecretStr("sqlite+aiosqlite:///./siopv.db")
+    # checkpoint_db_path: LangGraph SQLite checkpointer file path
+    checkpoint_db_path: str = "siopv_checkpoints.db"
+
+    # === API Client Cache ===
+    api_client_cache_max_size: int = 1000
 
     # === Circuit Breaker ===
     circuit_breaker_failure_threshold: int = 5

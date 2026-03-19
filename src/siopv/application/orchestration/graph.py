@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import sqlite3
 import uuid
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
@@ -51,11 +52,38 @@ if TYPE_CHECKING:
     from siopv.application.ports.ml_classifier import MLClassifierPort
     from siopv.application.ports.parsing import TrivyParserPort
     from siopv.application.ports.pdf_generator import PdfGeneratorPort
+    from siopv.domain.value_objects.discrepancy import ThresholdConfig
+    from siopv.domain.value_objects.escalation import EscalationConfig
 
 logger = structlog.get_logger(__name__)
 
-# Default checkpoint database path
-DEFAULT_CHECKPOINT_DB = "siopv_checkpoints.db"
+
+@dataclass
+class PipelinePorts:
+    """Bundle of all port dependencies for the pipeline graph.
+
+    Groups all injectable ports and configuration into a single object,
+    replacing 16-parameter signatures on builder, factory, and runner.
+    """
+
+    checkpoint_db_path: str | Path | None = None
+    trivy_parser: TrivyParserPort | None = None
+    authorization_port: AuthorizationPort | None = None
+    dlp_port: DLPPort | None = None
+    nvd_client: NVDClientPort | None = None
+    epss_client: EPSSClientPort | None = None
+    github_client: GitHubAdvisoryClientPort | None = None
+    osint_client: OSINTSearchClientPort | None = None
+    vector_store: VectorStorePort | None = None
+    classifier: MLClassifierPort | None = None
+    llm_analysis: LLMAnalysisPort | None = None
+    jira: JiraClientPort | None = None
+    pdf: PdfGeneratorPort | None = None
+    metrics: MetricsExporterPort | None = None
+    threshold_config: ThresholdConfig | None = None
+    escalation_config: EscalationConfig | None = None
+    batch_size: int | None = None
+
 
 # Allowed file extensions for validation
 ALLOWED_DB_EXTENSIONS = {".db", ".sqlite", ".sqlite3"}
@@ -94,6 +122,26 @@ def _validate_path(
     return resolved
 
 
+def _make_async_node(fn: Any, **kwargs: Any) -> Any:
+    """Create an async node closure binding keyword args to an async node function."""
+
+    async def _node(state: PipelineState) -> dict[str, object]:
+        result: dict[str, object] = await fn(state, **kwargs)
+        return result
+
+    return _node
+
+
+def _make_sync_node(fn: Any, **kwargs: Any) -> Any:
+    """Create a sync node closure binding keyword args to a sync node function."""
+
+    def _node(state: PipelineState) -> dict[str, object]:
+        result: dict[str, object] = fn(state, **kwargs)
+        return result
+
+    return _node
+
+
 class PipelineGraphBuilder:
     """Builder for the SIOPV LangGraph pipeline.
 
@@ -113,57 +161,13 @@ class PipelineGraphBuilder:
     - Uncertainty Trigger (Phase 4): If ML/LLM discrepancy high -> escalate
     """
 
-    def __init__(
-        self,
-        *,
-        checkpoint_db_path: str | Path | None = None,
-        trivy_parser: TrivyParserPort | None = None,
-        authorization_port: AuthorizationPort | None = None,
-        dlp_port: DLPPort | None = None,
-        nvd_client: NVDClientPort | None = None,
-        epss_client: EPSSClientPort | None = None,
-        github_client: GitHubAdvisoryClientPort | None = None,
-        osint_client: OSINTSearchClientPort | None = None,
-        vector_store: VectorStorePort | None = None,
-        classifier: MLClassifierPort | None = None,
-        llm_analysis: LLMAnalysisPort | None = None,
-        jira: JiraClientPort | None = None,
-        pdf: PdfGeneratorPort | None = None,
-        metrics: MetricsExporterPort | None = None,
-    ) -> None:
+    def __init__(self, ports: PipelinePorts | None = None) -> None:
         """Initialize the pipeline builder.
 
         Args:
-            checkpoint_db_path: Path to SQLite checkpoint database
-            trivy_parser: Trivy parser port for Phase 1 ingestion
-            authorization_port: Authorization port for Phase 5 gatekeeper
-            dlp_port: DLP port for Phase 6 privacy guardrail
-            nvd_client: NVD API client for enrichment
-            epss_client: EPSS API client for enrichment
-            github_client: GitHub Advisory client for enrichment
-            osint_client: OSINT search client for enrichment
-            vector_store: Vector store for enrichment cache
-            classifier: ML classifier for risk classification
-            llm_analysis: LLM analysis port for confidence evaluation
-            jira: Jira client port for ticket creation (Phase 8)
-            pdf: PDF generator port for report rendering (Phase 8)
-            metrics: Metrics exporter port for JSON/CSV output (Phase 8)
+            ports: Bundle of all port dependencies and configuration.
         """
-        self._checkpoint_db_path = checkpoint_db_path or DEFAULT_CHECKPOINT_DB
-        self._trivy_parser = trivy_parser
-        self._authorization_port = authorization_port
-        self._dlp_port = dlp_port
-        self._nvd_client = nvd_client
-        self._epss_client = epss_client
-        self._github_client = github_client
-        self._osint_client = osint_client
-        self._vector_store = vector_store
-        self._classifier = classifier
-        self._llm_analysis = llm_analysis
-        self._jira = jira
-        self._pdf = pdf
-        self._metrics = metrics
-
+        self._ports = ports or PipelinePorts()
         self._graph: StateGraph[PipelineState] | None = None
         self._compiled: CompiledStateGraph[PipelineState] | None = None
 
@@ -188,90 +192,74 @@ class PipelineGraphBuilder:
         return self
 
     def _add_nodes(self) -> None:
-        """Add all pipeline nodes to the graph."""
+        """Add all pipeline nodes to the graph.
 
+        Uses _make_node to bind port dependencies to each node function,
+        reducing repetitive closure boilerplate.
+        """
         if self._graph is None:
             msg = "Graph not initialized. Call build() first."
             raise RuntimeError(msg)
 
-        # Authorize node - Phase 5 gatekeeper (Zero Trust)
-        # async wrapper needed because authorization_node is async and
-        # Python does not support async lambda
-        async def _authorize_node(state: PipelineState) -> dict[str, object]:
-            return await authorization_node(
-                state,
-                authorization_port=self._authorization_port,
-            )
+        p = self._ports
 
-        self._graph.add_node("authorize", _authorize_node)
-
-        # Ingest node - Phase 1, use case injected from trivy_parser port
-        _ingest_use_case = (
-            IngestTrivyReportUseCase(parser=self._trivy_parser)
-            if self._trivy_parser is not None
-            else None
+        # Authorize (Phase 5 gatekeeper)
+        self._graph.add_node(
+            "authorize",
+            _make_async_node(authorization_node, authorization_port=p.authorization_port),
         )
 
-        def _ingest_node(state: PipelineState) -> dict[str, object]:
-            return ingest_node(state, use_case=_ingest_use_case)
+        # Ingest (Phase 1)
+        ingest_use_case = (
+            IngestTrivyReportUseCase(parser=p.trivy_parser) if p.trivy_parser is not None else None
+        )
+        self._graph.add_node("ingest", _make_sync_node(ingest_node, use_case=ingest_use_case))
 
-        self._graph.add_node("ingest", _ingest_node)
+        # DLP (Phase 6 guardrail)
+        self._graph.add_node("dlp", _make_async_node(dlp_node, dlp_port=p.dlp_port))
 
-        # DLP node - Phase 6 guardrail (sanitize vulnerability descriptions)
-        async def _dlp_node(state: PipelineState) -> dict[str, object]:
-            return await dlp_node(state, dlp_port=self._dlp_port)
+        # Enrich (Phase 2 CRAG)
+        enrich_kwargs: dict[str, object] = {
+            "nvd_client": p.nvd_client,
+            "epss_client": p.epss_client,
+            "github_client": p.github_client,
+            "osint_client": p.osint_client,
+            "vector_store": p.vector_store,
+            "llm_analysis": p.llm_analysis,
+        }
+        if p.batch_size is not None:
+            enrich_kwargs["max_concurrent"] = p.batch_size
+        self._graph.add_node(
+            "enrich",
+            _make_async_node(enrich_node, **enrich_kwargs),
+        )
 
-        self._graph.add_node("dlp", _dlp_node)
+        # Classify (Phase 3 ML)
+        self._graph.add_node(
+            "classify",
+            _make_async_node(classify_node, classifier=p.classifier, llm_analysis=p.llm_analysis),
+        )
 
-        # Enrich node - wraps Phase 2 use case with injected dependencies
-        async def _enrich_node(state: PipelineState) -> dict[str, object]:
-            return await enrich_node(
-                state,
-                nvd_client=self._nvd_client,
-                epss_client=self._epss_client,
-                github_client=self._github_client,
-                osint_client=self._osint_client,
-                vector_store=self._vector_store,
-                llm_analysis=self._llm_analysis,
-            )
+        # Escalate (Phase 4 + Phase 7 HITL)
+        esc = p.escalation_config
+        self._graph.add_node(
+            "escalate",
+            _make_sync_node(
+                escalate_node,
+                level_thresholds=esc.level_thresholds if esc else None,
+                review_deadline_hours=esc.review_deadline_hours if esc else None,
+                threshold_config=p.threshold_config,
+            ),
+        )
 
-        self._graph.add_node("enrich", _enrich_node)
-
-        # Classify node - wraps Phase 3 use case (async for LLM confidence)
-        async def _classify_node(state: PipelineState) -> dict[str, object]:
-            return await classify_node(
-                state,
-                classifier=self._classifier,
-                llm_analysis=self._llm_analysis,
-            )
-
-        self._graph.add_node("classify", _classify_node)
-
-        # Escalate node - handles uncertainty escalation
-        self._graph.add_node("escalate", escalate_node)
-
-        # Output node - Phase 8 report generation (Jira, PDF, CSV/JSON)
-        async def _output_node(state: PipelineState) -> dict[str, Any]:
-            return await output_node(
-                state,
-                jira=self._jira,
-                pdf=self._pdf,
-                metrics=self._metrics,
-            )
-
-        self._graph.add_node("output", _output_node)
+        # Output (Phase 8)
+        self._graph.add_node(
+            "output", _make_async_node(output_node, jira=p.jira, pdf=p.pdf, metrics=p.metrics)
+        )
 
         logger.debug(
             "pipeline_nodes_added",
-            nodes=[
-                "authorize",
-                "ingest",
-                "dlp",
-                "enrich",
-                "classify",
-                "escalate",
-                "output",
-            ],
+            nodes=["authorize", "ingest", "dlp", "enrich", "classify", "escalate", "output"],
         )
 
     def _add_edges(self) -> None:
@@ -300,9 +288,14 @@ class PipelineGraphBuilder:
         self._graph.add_edge("enrich", "classify")
 
         # Conditional routing after classify based on uncertainty
+        _threshold_config = self._ports.threshold_config
+
+        def _route_after_classify(state: dict[str, object]) -> str:
+            return route_after_classify(state, config=_threshold_config)
+
         self._graph.add_conditional_edges(
             "classify",
-            route_after_classify,
+            _route_after_classify,
             {
                 "escalate": "escalate",
                 "continue": "output",
@@ -334,8 +327,11 @@ class PipelineGraphBuilder:
             ValueError: If checkpoint database path validation fails
         """
 
+        if self._ports.checkpoint_db_path is None:
+            msg = "checkpoint_db_path must be set in PipelinePorts (from settings)"
+            raise ValueError(msg)
         db_path = _validate_path(
-            Path(self._checkpoint_db_path),
+            Path(self._ports.checkpoint_db_path),
             allowed_extensions=ALLOWED_DB_EXTENSIONS,
         )
         conn = sqlite3.connect(str(db_path), check_same_thread=False)
@@ -378,7 +374,8 @@ class PipelineGraphBuilder:
             Compiled StateGraph
         """
         if self._compiled is None:
-            return self.compile()
+            use_checkpointer = self._ports.checkpoint_db_path is not None
+            return self.compile(with_checkpointer=use_checkpointer)
         return self._compiled
 
     def visualize(self) -> str:
@@ -418,85 +415,30 @@ class PipelineGraphBuilder:
 
 
 def create_pipeline_graph(
+    ports: PipelinePorts | None = None,
     *,
-    checkpoint_db_path: str | Path | None = None,
-    trivy_parser: TrivyParserPort | None = None,
-    authorization_port: AuthorizationPort | None = None,
-    dlp_port: DLPPort | None = None,
-    nvd_client: NVDClientPort | None = None,
-    epss_client: EPSSClientPort | None = None,
-    github_client: GitHubAdvisoryClientPort | None = None,
-    osint_client: OSINTSearchClientPort | None = None,
-    vector_store: VectorStorePort | None = None,
-    classifier: MLClassifierPort | None = None,
-    llm_analysis: LLMAnalysisPort | None = None,
-    jira: JiraClientPort | None = None,
-    pdf: PdfGeneratorPort | None = None,
-    metrics: MetricsExporterPort | None = None,
     with_checkpointer: bool = True,
 ) -> CompiledStateGraph[PipelineState]:
     """Factory function to create and compile the pipeline graph.
 
     Args:
-        checkpoint_db_path: Path to SQLite checkpoint database
-        trivy_parser: Trivy parser port for Phase 1 ingestion
-        authorization_port: Authorization port for Phase 5 gatekeeper
-        dlp_port: DLP port for Phase 6 privacy guardrail
-        nvd_client: NVD API client for enrichment
-        epss_client: EPSS API client for enrichment
-        github_client: GitHub Advisory client for enrichment
-        osint_client: OSINT search client for enrichment
-        vector_store: Vector store for enrichment cache
-        classifier: ML classifier for risk classification
-        llm_analysis: LLM analysis port for confidence evaluation
-        jira: Jira client port for ticket creation (Phase 8)
-        pdf: PDF generator port for report rendering (Phase 8)
-        metrics: Metrics exporter port for JSON/CSV output (Phase 8)
+        ports: Bundle of all port dependencies and configuration.
         with_checkpointer: Whether to enable checkpointing
 
     Returns:
         Compiled StateGraph ready for invocation
     """
-    builder = PipelineGraphBuilder(
-        checkpoint_db_path=checkpoint_db_path,
-        trivy_parser=trivy_parser,
-        authorization_port=authorization_port,
-        dlp_port=dlp_port,
-        nvd_client=nvd_client,
-        epss_client=epss_client,
-        github_client=github_client,
-        osint_client=osint_client,
-        vector_store=vector_store,
-        classifier=classifier,
-        llm_analysis=llm_analysis,
-        jira=jira,
-        pdf=pdf,
-        metrics=metrics,
-    )
-
+    builder = PipelineGraphBuilder(ports)
     return builder.build().compile(with_checkpointer=with_checkpointer)
 
 
 async def run_pipeline(
     report_path: str | Path,
+    ports: PipelinePorts | None = None,
     *,
     thread_id: str | None = None,
     user_id: str | None = None,
     project_id: str | None = None,
-    checkpoint_db_path: str | Path | None = None,
-    trivy_parser: TrivyParserPort | None = None,
-    authorization_port: AuthorizationPort | None = None,
-    dlp_port: DLPPort | None = None,
-    nvd_client: NVDClientPort | None = None,
-    epss_client: EPSSClientPort | None = None,
-    github_client: GitHubAdvisoryClientPort | None = None,
-    osint_client: OSINTSearchClientPort | None = None,
-    vector_store: VectorStorePort | None = None,
-    classifier: MLClassifierPort | None = None,
-    llm_analysis: LLMAnalysisPort | None = None,
-    jira: JiraClientPort | None = None,
-    pdf: PdfGeneratorPort | None = None,
-    metrics: MetricsExporterPort | None = None,
 ) -> PipelineState:
     """Run the full pipeline on a Trivy report (async).
 
@@ -506,27 +448,15 @@ async def run_pipeline(
 
     Args:
         report_path: Path to Trivy JSON report
+        ports: Bundle of all port dependencies and configuration.
         thread_id: Optional thread ID for checkpointing
         user_id: Optional user ID for authorization (Phase 5)
         project_id: Optional project ID for authorization context (Phase 5)
-        checkpoint_db_path: Path to checkpoint database
-        trivy_parser: Optional Trivy parser port for Phase 1 ingestion
-        authorization_port: Optional authorization port for Phase 5 gatekeeper
-        dlp_port: Optional DLP port for Phase 6 privacy guardrail
-        nvd_client: Optional NVD API client for enrichment
-        epss_client: Optional EPSS API client for enrichment
-        github_client: Optional GitHub Advisory client for enrichment
-        osint_client: Optional OSINT search client for enrichment
-        vector_store: Optional vector store for enrichment cache
-        classifier: Optional ML classifier
-        llm_analysis: Optional LLM analysis port for confidence evaluation
-        jira: Optional Jira client port for ticket creation (Phase 8)
-        pdf: Optional PDF generator port for report rendering (Phase 8)
-        metrics: Optional metrics exporter port for JSON/CSV output (Phase 8)
 
     Returns:
         Final pipeline state with all results
     """
+    ports = ports or PipelinePorts()
 
     # Create initial state
     initial_state = create_initial_state(
@@ -536,23 +466,7 @@ async def run_pipeline(
         project_id=project_id,
     )
 
-    # Build graph without checkpointer first (checkpointer added below)
-    builder = PipelineGraphBuilder(
-        checkpoint_db_path=checkpoint_db_path,
-        trivy_parser=trivy_parser,
-        authorization_port=authorization_port,
-        dlp_port=dlp_port,
-        nvd_client=nvd_client,
-        epss_client=epss_client,
-        github_client=github_client,
-        osint_client=osint_client,
-        vector_store=vector_store,
-        classifier=classifier,
-        llm_analysis=llm_analysis,
-        jira=jira,
-        pdf=pdf,
-        metrics=metrics,
-    )
+    builder = PipelineGraphBuilder(ports)
 
     # Configure execution
     config: RunnableConfig = {"configurable": {"thread_id": initial_state["thread_id"]}}
@@ -568,9 +482,9 @@ async def run_pipeline(
     # Execute pipeline via ainvoke — required because some nodes are async.
     # When checkpointing is requested, use AsyncSqliteSaver (the sync
     # SqliteSaver does not support ainvoke).
-    if checkpoint_db_path is not None:
+    if ports.checkpoint_db_path is not None:
         db_path = _validate_path(
-            Path(checkpoint_db_path),
+            Path(ports.checkpoint_db_path),
             allowed_extensions=ALLOWED_DB_EXTENSIONS,
         )
         async with AsyncSqliteSaver.from_conn_string(str(db_path)) as checkpointer:
@@ -599,8 +513,8 @@ async def run_pipeline(
 __all__ = [
     "ALLOWED_DB_EXTENSIONS",
     "ALLOWED_OUTPUT_EXTENSIONS",
-    "DEFAULT_CHECKPOINT_DB",
     "PipelineGraphBuilder",
+    "PipelinePorts",
     "create_pipeline_graph",
     "run_pipeline",
 ]

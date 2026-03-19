@@ -11,14 +11,11 @@ from __future__ import annotations
 
 from siopv.application.orchestration.edges import (
     RouteType,
-    calculate_batch_discrepancies,
-    calculate_discrepancy,
     route_after_classify,
     route_after_escalate,
     should_escalate_route,
 )
 from siopv.application.orchestration.graph import (
-    DEFAULT_CHECKPOINT_DB,
     PipelineGraphBuilder,
     create_pipeline_graph,
     run_pipeline,
@@ -43,15 +40,12 @@ from siopv.application.orchestration.utils import (
 )
 
 __all__ = [
-    "DEFAULT_CHECKPOINT_DB",
     "DiscrepancyHistory",
     "DiscrepancyResult",
     "PipelineGraphBuilder",
     "PipelineState",
     "RouteType",
     "ThresholdConfig",
-    "calculate_batch_discrepancies",
-    "calculate_discrepancy",
     "calculate_escalation_candidates",
     "check_any_escalation_needed",
     "classify_node",

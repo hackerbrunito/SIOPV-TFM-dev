@@ -52,7 +52,7 @@ def build_classifier(settings: Settings) -> MLClassifierPort | None:
         )
         return None
 
-    adapter = XGBoostClassifier(model_path=model_path)
+    adapter = XGBoostClassifier(model_path=model_path, environment=settings.environment)
     logger.info("classifier_created", model_path=str(model_path))
     return adapter
 

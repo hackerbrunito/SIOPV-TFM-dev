@@ -11,7 +11,6 @@ Security features (M-03 fix):
 
 from __future__ import annotations
 
-import os
 import secrets
 from pathlib import Path
 
@@ -72,7 +71,7 @@ DEFAULT_DEV_RANDOM_STATE = 42
 def _get_random_state(
     configured_value: int | None = None,
     *,
-    environment: str | None = None,
+    environment: str = "development",
 ) -> int:
     """Get random state based on configuration and environment.
 
@@ -80,22 +79,21 @@ def _get_random_state(
 
     Args:
         configured_value: Explicitly configured random state (takes priority)
-        environment: Override environment detection (for testing)
+        environment: Application environment (injected from settings.environment via DI)
 
     Returns:
         Random state integer to use for ML operations
 
     Behavior:
         - If configured_value is provided: use it (explicit override)
-        - In production (SIOPV_ENVIRONMENT=production): use cryptographic randomness
+        - In production: use cryptographic randomness
         - In dev/test: use DEFAULT_DEV_RANDOM_STATE (42) for reproducibility
     """
     # Explicit configuration takes priority
     if configured_value is not None:
         return configured_value
 
-    # Detect environment
-    env = environment or os.environ.get("SIOPV_ENVIRONMENT", "development")
+    env = environment
 
     if env == "production":
         # Use cryptographically secure random number in production
@@ -134,6 +132,7 @@ class XGBoostClassifier(MLClassifierPort, ModelTrainerPort):
         feature_names: list[str] | None = None,
         model_version: str = "1.0.0",
         random_state: int | None = None,
+        environment: str = "development",
     ) -> None:
         """Initialize XGBoost classifier.
 
@@ -145,11 +144,13 @@ class XGBoostClassifier(MLClassifierPort, ModelTrainerPort):
                 - If None: auto-detect based on environment
                 - In production: uses cryptographic randomness
                 - In dev/test: uses 42 for reproducibility
+            environment: Application environment (injected from settings.environment via DI)
         """
         self._model_path = Path(model_path) if model_path else None
         self._feature_names = feature_names or DEFAULT_FEATURE_NAMES
         self._model_version = model_version
         self._configured_random_state = random_state
+        self._environment = environment
 
         self._model: XGBClassifierBase | None = None
         self._shap_explainer: SHAPExplainer | None = None
@@ -175,7 +176,9 @@ class XGBoostClassifier(MLClassifierPort, ModelTrainerPort):
             Random state value, stored for audit purposes
         """
         if self._used_random_state is None:
-            self._used_random_state = _get_random_state(self._configured_random_state)
+            self._used_random_state = _get_random_state(
+                self._configured_random_state, environment=self._environment
+            )
         return self._used_random_state
 
     # === MLClassifierPort Implementation ===

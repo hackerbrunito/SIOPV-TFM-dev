@@ -177,7 +177,7 @@ class RateLimiter:
 
         # Queue the request
         event = asyncio.Event()
-        await self._queue.put((priority, asyncio.get_event_loop().time(), event))
+        await self._queue.put((priority, asyncio.get_running_loop().time(), event))
 
         # Start queue processor if not running
         self._ensure_processor_running()
@@ -251,52 +251,87 @@ class RateLimiter:
 
 
 # Pre-configured rate limiters for known APIs
-def create_nvd_rate_limiter(*, has_api_key: bool = False) -> RateLimiter:
+def create_nvd_rate_limiter(
+    *,
+    has_api_key: bool = False,
+    rate_with_key: int = 50,
+    rate_without_key: int = 5,
+    period_seconds: float = 30.0,
+    max_queue_size: int = 100,
+) -> RateLimiter:
     """Create rate limiter for NVD API.
 
     Args:
         has_api_key: True if using NVD API key (higher rate)
+        rate_with_key: Requests per period with API key
+        rate_without_key: Requests per period without API key
+        period_seconds: Rate limit period in seconds
+        max_queue_size: Maximum queued requests before rejection
 
     Returns:
         Configured RateLimiter
     """
-    requests = 50 if has_api_key else 5
+    requests = rate_with_key if has_api_key else rate_without_key
     return RateLimiter(
         "nvd_api",
         requests_per_period=requests,
-        period_seconds=30.0,
+        period_seconds=period_seconds,
         burst_size=requests,
+        max_queue_size=max_queue_size,
     )
 
 
-def create_github_rate_limiter(*, has_token: bool = False) -> RateLimiter:
+def create_github_rate_limiter(
+    *,
+    has_token: bool = False,
+    rate_with_token: int = 5000,
+    rate_without_token: int = 60,
+    period_seconds: float = 3600.0,
+    max_queue_size: int = 100,
+) -> RateLimiter:
     """Create rate limiter for GitHub API.
 
     Args:
         has_token: True if using personal access token
+        rate_with_token: Requests per period with token
+        rate_without_token: Requests per period without token
+        period_seconds: Rate limit period in seconds
+        max_queue_size: Maximum queued requests before rejection
 
     Returns:
         Configured RateLimiter
     """
-    requests = 5000 if has_token else 60
+    requests = rate_with_token if has_token else rate_without_token
     return RateLimiter(
         "github_api",
         requests_per_period=requests,
-        period_seconds=3600.0,  # 1 hour
-        burst_size=min(requests, 100),  # Cap burst
+        period_seconds=period_seconds,
+        burst_size=min(requests, max_queue_size),
+        max_queue_size=max_queue_size,
     )
 
 
-def create_epss_rate_limiter() -> RateLimiter:
+def create_epss_rate_limiter(
+    *,
+    rps: float = 10.0,
+    burst_size: int = 20,
+    max_queue_size: int = 100,
+) -> RateLimiter:
     """Create conservative rate limiter for EPSS API.
+
+    Args:
+        rps: Requests per second
+        burst_size: Maximum burst capacity
+        max_queue_size: Maximum queued requests before rejection
 
     Returns:
         Configured RateLimiter
     """
     return RateLimiter(
         "epss_api",
-        requests_per_second=10.0,  # Conservative default
-        burst_size=20,
+        requests_per_second=rps,
+        burst_size=burst_size,
+        max_queue_size=max_queue_size,
     )
 
 

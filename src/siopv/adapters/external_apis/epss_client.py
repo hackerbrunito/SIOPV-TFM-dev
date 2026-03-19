@@ -19,9 +19,10 @@ from tenacity import (
     wait_exponential,
 )
 
+from siopv.adapters.external_apis.base_client import BaseAPIClient
 from siopv.application.ports import EPSSClientPort
 from siopv.domain.exceptions import ExternalAPIError
-from siopv.domain.value_objects import EPSSScore
+from siopv.domain.value_objects import EPSSScore, validate_cve_id
 from siopv.infrastructure.resilience import (
     CircuitBreaker,
     CircuitBreakerError,
@@ -39,7 +40,7 @@ class EPSSClientError(ExternalAPIError):
     """Error from EPSS API operations."""
 
 
-class EPSSClient(EPSSClientPort):
+class EPSSClient(BaseAPIClient[EPSSScore], EPSSClientPort):
     """FIRST EPSS API client implementation.
 
     Features:
@@ -61,10 +62,27 @@ class EPSSClient(EPSSClientPort):
             settings: Application settings with EPSS configuration
             client: Optional pre-configured httpx client (for testing)
         """
+        super().__init__(
+            timeout=httpx.Timeout(
+                connect=settings.epss_timeout_connect,
+                read=settings.epss_timeout_read,
+                write=settings.epss_timeout_write,
+                pool=settings.epss_timeout_pool,
+            ),
+            headers={"User-Agent": "SIOPV/1.0", "Accept": "application/json"},
+            cache_max_size=settings.api_client_cache_max_size,
+            client=client,
+        )
+
         self._base_url = settings.epss_base_url
+        self._batch_chunk_size = settings.epss_batch_chunk_size
 
         # Configure rate limiter (conservative, no documented limit)
-        self._rate_limiter = create_epss_rate_limiter()
+        self._rate_limiter = create_epss_rate_limiter(
+            rps=settings.epss_rate_limit_rps,
+            burst_size=settings.epss_burst_size,
+            max_queue_size=settings.rate_limiter_max_queue_size,
+        )
 
         # Configure circuit breaker
         self._circuit_breaker = CircuitBreaker(
@@ -73,35 +91,7 @@ class EPSSClient(EPSSClientPort):
             recovery_timeout=settings.circuit_breaker_recovery_timeout,
         )
 
-        # HTTP client configuration
-        self._timeout = httpx.Timeout(connect=5.0, read=15.0, write=5.0, pool=5.0)
-        self._external_client = client
-        self._owned_client: httpx.AsyncClient | None = None
-
-        # Simple in-memory cache
-        self._cache: dict[str, EPSSScore] = {}
-
         logger.info("epss_client_initialized", base_url=self._base_url)
-
-    async def _get_client(self) -> httpx.AsyncClient:
-        """Get or create HTTP client."""
-        if self._external_client:
-            return self._external_client
-
-        if self._owned_client is None:
-            self._owned_client = httpx.AsyncClient(
-                timeout=self._timeout,
-                headers={"User-Agent": "SIOPV/1.0", "Accept": "application/json"},
-                follow_redirects=True,
-            )
-
-        return self._owned_client
-
-    async def close(self) -> None:
-        """Close HTTP client if owned."""
-        if self._owned_client:
-            await self._owned_client.aclose()
-            self._owned_client = None
 
     @retry(
         retry=retry_if_exception_type((httpx.TimeoutException, httpx.HTTPStatusError)),
@@ -145,10 +135,13 @@ class EPSSClient(EPSSClientPort):
         Returns:
             EPSSScore with probability and percentile, or None if not found
         """
+        validate_cve_id(cve_id)
+
         # Check cache first
-        if cve_id in self._cache:
+        cached = self._cache_get(cve_id)
+        if cached is not None:
             logger.debug("epss_cache_hit", cve_id=cve_id)
-            return self._cache[cve_id]
+            return cached
 
         try:
             # Apply rate limiting
@@ -163,7 +156,7 @@ class EPSSClient(EPSSClientPort):
 
             # Parse and cache result
             score = EPSSScore.from_api_response(data)
-            self._cache[cve_id] = score
+            self._cache_set(cve_id, score)
 
         except CircuitBreakerError:
             logger.warning("epss_circuit_open", cve_id=cve_id)
@@ -239,13 +232,17 @@ class EPSSClient(EPSSClientPort):
         Returns:
             Dictionary mapping cve_id to EPSSScore or None
         """
+        for cve_id in cve_ids:
+            validate_cve_id(cve_id)
+
         results: dict[str, EPSSScore | None] = {}
 
         # Check cache first
         uncached_ids = []
         for cve_id in cve_ids:
-            if cve_id in self._cache:
-                results[cve_id] = self._cache[cve_id]
+            cached = self._cache_get(cve_id)
+            if cached is not None:
+                results[cve_id] = cached
             else:
                 uncached_ids.append(cve_id)
                 results[cve_id] = None  # Default to None
@@ -260,10 +257,9 @@ class EPSSClient(EPSSClientPort):
 
             # Apply circuit breaker
             async with self._circuit_breaker:
-                # Batch in chunks of 100 (API limit)
-                chunk_size = 100
-                for i in range(0, len(uncached_ids), chunk_size):
-                    chunk = uncached_ids[i : i + chunk_size]
+                # Batch in chunks (configurable via settings)
+                for i in range(0, len(uncached_ids), self._batch_chunk_size):
+                    chunk = uncached_ids[i : i + self._batch_chunk_size]
                     epss_data = await self._fetch_epss_batch(chunk)
 
                     # Process results
@@ -271,7 +267,7 @@ class EPSSClient(EPSSClientPort):
                         cve_id_value: str | None = item.get("cve")
                         if cve_id_value:
                             score = EPSSScore.from_api_response(item)
-                            self._cache[cve_id_value] = score
+                            self._cache_set(cve_id_value, score)
                             results[cve_id_value] = score
 
             logger.info(
@@ -287,11 +283,6 @@ class EPSSClient(EPSSClientPort):
             logger.exception("epss_batch_error", error=str(e))
 
         return results
-
-    def clear_cache(self) -> None:
-        """Clear the in-memory cache."""
-        self._cache.clear()
-        logger.debug("epss_cache_cleared")
 
 
 __all__ = ["EPSSClient", "EPSSClientError"]

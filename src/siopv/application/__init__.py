@@ -8,7 +8,6 @@ from __future__ import annotations
 
 # Phase 4 - Orchestration (LangGraph)
 from siopv.application.orchestration import (
-    DEFAULT_CHECKPOINT_DB,
     DiscrepancyHistory,
     DiscrepancyResult,
     PipelineGraphBuilder,
@@ -21,7 +20,6 @@ from siopv.application.orchestration import (
 
 __all__ = [
     # Phase 4 - Orchestration
-    "DEFAULT_CHECKPOINT_DB",
     "DiscrepancyHistory",
     "DiscrepancyResult",
     "PipelineGraphBuilder",
