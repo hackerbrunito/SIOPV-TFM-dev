@@ -10,6 +10,7 @@ Handles partial failure: if one channel fails, others still execute.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import structlog
@@ -38,6 +39,8 @@ class GenerateReportUseCase:
         jira: JiraClientPort,
         pdf: PdfGeneratorPort,
         metrics: MetricsExporterPort,
+        *,
+        output_dir: Path | None = None,
     ) -> None:
         """Initialize the report generation use case.
 
@@ -45,12 +48,16 @@ class GenerateReportUseCase:
             jira: Jira client port for ticket creation/updates
             pdf: PDF generator port for report rendering
             metrics: Metrics exporter port for JSON/CSV output
+            output_dir: Directory for output files (PDF, JSON, CSV).
+                        Defaults to ./output if not provided.
         """
         self._jira = jira
         self._pdf = pdf
         self._metrics = metrics
+        self._output_dir = output_dir or Path("./output")
+        self._output_dir.mkdir(parents=True, exist_ok=True)
 
-        logger.info("generate_report_use_case_initialized")
+        logger.info("generate_report_use_case_initialized", output_dir=str(self._output_dir))
 
     async def execute(self, state: PipelineState) -> dict[str, Any]:
         """Execute report generation across all output channels.
@@ -78,13 +85,14 @@ class GenerateReportUseCase:
         json_path: str | None = None
         errors: list[str] = []
 
-        # Channel 1: Jira tickets
-        jira_keys, jira_errors = await self._create_jira_tickets(state)
-        errors.extend(jira_errors)
-
-        # Channel 2: PDF report
+        # Channel 1: PDF report (generated first so Jira tickets can link to it)
         pdf_path, pdf_errors = self._generate_pdf(state)
         errors.extend(pdf_errors)
+
+        # Channel 2: Jira tickets (uses pdf_path from Channel 1)
+        jira_state: PipelineState = {**state, "output_pdf_path": pdf_path}
+        jira_keys, jira_errors = await self._create_jira_tickets(jira_state)
+        errors.extend(jira_errors)
 
         # Channel 3: Metrics export (JSON + CSV)
         json_path, json_errors = self._export_json(state)
@@ -215,18 +223,12 @@ class GenerateReportUseCase:
 
         # Enrichment data from CRAG (Phase 2) — NVD, EPSS, GitHub
         if enrichment is not None:
-            if hasattr(enrichment, "epss_score"):
-                data["epss_score"] = enrichment.epss_score
-            if hasattr(enrichment, "epss_percentile"):
-                data["epss_percentile"] = enrichment.epss_percentile
-            if hasattr(enrichment, "cvss_vector"):
-                data["cvss_vector"] = enrichment.cvss_vector
-            if hasattr(enrichment, "exploit_available"):
-                data["exploit_available"] = enrichment.exploit_available
-            if hasattr(enrichment, "attack_vector"):
-                data["attack_vector"] = enrichment.attack_vector
-            if hasattr(enrichment, "remediation") and enrichment.remediation:
-                data["recommendation"] = enrichment.remediation
+            self._extract_epss_data(enrichment, data)
+            self._extract_nvd_data(enrichment, data, cve_id)
+            self._extract_github_data(enrichment, data)
+            # LLM-generated remediation
+            if enrichment.llm_remediation:
+                data["recommendation"] = enrichment.llm_remediation
 
         # ML + LLM classification (Phase 3)
         if hasattr(classification, "risk_score") and classification.risk_score is not None:
@@ -241,6 +243,49 @@ class GenerateReportUseCase:
 
         return data
 
+    @staticmethod
+    def _extract_epss_data(enrichment: Any, data: dict[str, Any]) -> None:
+        """Extract EPSS exploitation probability data from enrichment."""
+        if enrichment.epss is not None:
+            data["epss_score"] = enrichment.epss.score
+            data["epss_percentile"] = enrichment.epss.percentile
+
+    @staticmethod
+    def _extract_nvd_data(enrichment: Any, data: dict[str, Any], cve_id: str) -> None:
+        """Extract NVD enrichment data (CVSS vector, CWE, exploit refs, NVD URL)."""
+        if enrichment.nvd is None:
+            return
+        nvd = enrichment.nvd
+        if nvd.cvss_v3_vector is not None:
+            v = nvd.cvss_v3_vector
+            data["cvss_vector"] = (
+                f"CVSS:3.1/AV:{v.attack_vector}/AC:{v.attack_complexity}"
+                f"/PR:{v.privileges_required}/UI:{v.user_interaction}"
+                f"/S:{v.scope}/C:{v.confidentiality_impact}"
+                f"/I:{v.integrity_impact}/A:{v.availability_impact}"
+            )
+            data["attack_vector"] = v.attack_vector
+        if nvd.cvss_v3_score is not None and data.get("cvss_score") is None:
+            data["cvss_score"] = nvd.cvss_v3_score
+        data["exploit_available"] = nvd.has_exploit_ref
+        if nvd.cwe_ids:
+            data["cwe_ids"] = nvd.cwe_ids
+        # Add canonical NVD URL
+        data["nvd_url"] = f"https://nvd.nist.gov/vuln/detail/{cve_id}"
+
+    @staticmethod
+    def _extract_github_data(enrichment: Any, data: dict[str, Any]) -> None:
+        """Extract GitHub Security Advisory data."""
+        if enrichment.github_advisory is None:
+            return
+        gh = enrichment.github_advisory
+        if gh.ghsa_id:
+            data["ghsa_id"] = gh.ghsa_id
+        if gh.patched_versions:
+            data["patched_versions"] = gh.patched_versions
+        if gh.vulnerable_version_range:
+            data["vulnerable_range"] = gh.vulnerable_version_range
+
     def _generate_pdf(self, state: PipelineState) -> tuple[str | None, list[str]]:
         """Generate PDF report from pipeline state.
 
@@ -252,7 +297,7 @@ class GenerateReportUseCase:
         """
         try:
             thread_id = state.get("thread_id", "unknown")
-            output_path = f"/tmp/siopv-report-{thread_id}.pdf"
+            output_path = str(self._output_dir / f"siopv-report-{thread_id}.pdf")
             path = self._pdf.generate(state, output_path)
         except Exception as exc:
             error_msg = f"PDF generation failed: {exc}"
@@ -273,7 +318,7 @@ class GenerateReportUseCase:
         """
         try:
             thread_id = state.get("thread_id", "unknown")
-            output_path = f"/tmp/siopv-metrics-{thread_id}.json"
+            output_path = str(self._output_dir / f"siopv-metrics-{thread_id}.json")
             path = self._metrics.export_json(state, output_path)
         except Exception as exc:
             error_msg = f"JSON export failed: {exc}"
@@ -294,7 +339,7 @@ class GenerateReportUseCase:
         """
         try:
             thread_id = state.get("thread_id", "unknown")
-            output_path = f"/tmp/siopv-metrics-{thread_id}.csv"
+            output_path = str(self._output_dir / f"siopv-metrics-{thread_id}.csv")
             path = self._metrics.export_csv(state, output_path)
         except Exception as exc:
             error_msg = f"CSV export failed: {exc}"
@@ -309,6 +354,8 @@ def create_generate_report_use_case(
     jira: JiraClientPort,
     pdf: PdfGeneratorPort,
     metrics: MetricsExporterPort,
+    *,
+    output_dir: Path | None = None,
 ) -> GenerateReportUseCase:
     """Factory function to create GenerateReportUseCase.
 
@@ -316,11 +363,12 @@ def create_generate_report_use_case(
         jira: Jira client port implementation
         pdf: PDF generator port implementation
         metrics: Metrics exporter port implementation
+        output_dir: Directory for output files (PDF, JSON, CSV)
 
     Returns:
         Configured GenerateReportUseCase
     """
-    return GenerateReportUseCase(jira=jira, pdf=pdf, metrics=metrics)
+    return GenerateReportUseCase(jira=jira, pdf=pdf, metrics=metrics, output_dir=output_dir)
 
 
 __all__ = [

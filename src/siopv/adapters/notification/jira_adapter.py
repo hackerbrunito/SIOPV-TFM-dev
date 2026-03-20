@@ -95,6 +95,9 @@ def _section_risk_assessment(data: dict[str, Any]) -> str | None:
     exploit = data.get("exploit_available")
     if exploit is not None:
         lines.append(f"Known Exploit Available: {'YES' if exploit else 'No'}")
+    cwe_ids = data.get("cwe_ids")
+    if cwe_ids:
+        lines.append(f"CWE: {', '.join(cwe_ids)}")
     return "RISK ASSESSMENT\n" + "\n".join(lines) if lines else None
 
 
@@ -124,16 +127,29 @@ def _section_affected_component(data: dict[str, Any]) -> str | None:
         lines.append(f"Fixed Version: {fixed}")
     attack_vector = data.get("attack_vector")
     if attack_vector:
-        lines.append(f"Attack Vector: {attack_vector}")
+        av_labels = {"N": "Network", "A": "Adjacent", "L": "Local", "P": "Physical"}
+        lines.append(f"Attack Vector: {av_labels.get(attack_vector, attack_vector)}")
+    vulnerable_range = data.get("vulnerable_range")
+    if vulnerable_range:
+        lines.append(f"Vulnerable Range: {vulnerable_range}")
+    patched = data.get("patched_versions")
+    if patched:
+        lines.append(f"Patched Versions: {', '.join(patched)}")
     return "AFFECTED COMPONENT\n" + "\n".join(lines) if lines else None
 
 
 def _section_references(data: dict[str, Any]) -> str | None:
-    """Build references section with NVD URL and PDF report link."""
+    """Build references section with NVD URL, GHSA, and PDF report link."""
     lines: list[str] = []
+    nvd_url = data.get("nvd_url")
+    if nvd_url:
+        lines.append(f"NVD: {nvd_url}")
     primary_url = data.get("primary_url")
-    if primary_url:
-        lines.append(f"NVD Advisory: {primary_url}")
+    if primary_url and primary_url != nvd_url:
+        lines.append(f"Advisory: {primary_url}")
+    ghsa_id = data.get("ghsa_id")
+    if ghsa_id:
+        lines.append(f"GitHub Advisory: https://github.com/advisories/{ghsa_id}")
     pdf_path = data.get("pdf_report_path")
     if pdf_path:
         lines.append(f"Full Analysis Report (PDF): {pdf_path}")

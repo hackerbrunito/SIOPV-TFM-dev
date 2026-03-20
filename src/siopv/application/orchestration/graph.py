@@ -83,6 +83,7 @@ class PipelinePorts:
     threshold_config: ThresholdConfig | None = None
     escalation_config: EscalationConfig | None = None
     batch_size: int | None = None
+    output_dir: Path | None = None
 
 
 # Allowed file extensions for validation
@@ -254,7 +255,10 @@ class PipelineGraphBuilder:
 
         # Output (Phase 8)
         self._graph.add_node(
-            "output", _make_async_node(output_node, jira=p.jira, pdf=p.pdf, metrics=p.metrics)
+            "output",
+            _make_async_node(
+                output_node, jira=p.jira, pdf=p.pdf, metrics=p.metrics, output_dir=p.output_dir
+            ),
         )
 
         logger.debug(

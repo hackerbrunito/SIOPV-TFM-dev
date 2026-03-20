@@ -10,6 +10,8 @@ from typing import TYPE_CHECKING, Any
 import structlog
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from siopv.application.orchestration.state import PipelineState
     from siopv.application.ports.jira_client import JiraClientPort
     from siopv.application.ports.metrics_exporter import MetricsExporterPort
@@ -24,6 +26,7 @@ async def output_node(
     jira: JiraClientPort | None = None,
     pdf: PdfGeneratorPort | None = None,
     metrics: MetricsExporterPort | None = None,
+    output_dir: Path | None = None,
 ) -> dict[str, Any]:
     """Execute output phase as a LangGraph node.
 
@@ -70,6 +73,7 @@ async def output_node(
             jira=jira,  # type: ignore[arg-type]
             pdf=pdf,  # type: ignore[arg-type]
             metrics=metrics,  # type: ignore[arg-type]
+            output_dir=output_dir,
         )
 
         result = await use_case.execute(state)

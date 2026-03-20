@@ -210,6 +210,7 @@ def process_report(
         threshold_config=build_threshold_config(settings),
         escalation_config=build_escalation_config(settings),
         batch_size=batch_size,
+        output_dir=output_dir,
     )
 
     try:
