@@ -44,6 +44,9 @@ dependencies = [
     "openfga-sdk>=0.6.0",
     # Authentication (JWT/OIDC)
     "PyJWT[crypto]>=2.12.0",
+    # Webhook (inbound API)
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.34.0",
     # CLI & Dashboard
     "typer[all]>=0.12.0",
     "streamlit>=1.40.0",
@@ -160,6 +163,7 @@ show_error_codes = true
 
 [[tool.mypy.overrides]]
 module = [
+    "fastapi.*",
     "imblearn.*",
     "lime.*",
     "openfga_sdk.*",
@@ -167,12 +171,14 @@ module = [
     "presidio_anonymizer.*",
     "shap.*",
     "sklearn.*",
+    "spacy.*",
     "streamlit.*",
+    "uvicorn.*",
 ]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-module = ["siopv.interfaces.dashboard.*"]
+module = ["siopv.interfaces.dashboard.*", "siopv.adapters.inbound.*"]
 disallow_untyped_decorators = false
 
 [tool.pytest.ini_options]

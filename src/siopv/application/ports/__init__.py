@@ -28,6 +28,7 @@ from siopv.application.ports.oidc_authentication import OIDCAuthenticationPort
 from siopv.application.ports.parsing import TrivyParserPort
 from siopv.application.ports.pdf_generator import PdfGeneratorPort
 from siopv.application.ports.vector_store import VectorStorePort
+from siopv.application.ports.webhook_receiver import WebhookReceiverPort
 
 __all__ = [
     "AuthorizationModelPort",
@@ -48,4 +49,5 @@ __all__ = [
     "PdfGeneratorPort",
     "TrivyParserPort",
     "VectorStorePort",
+    "WebhookReceiverPort",
 ]

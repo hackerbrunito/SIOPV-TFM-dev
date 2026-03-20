@@ -181,6 +181,12 @@ class Settings(BaseSettings):
     circuit_breaker_failure_threshold: int = 5
     circuit_breaker_recovery_timeout: int = 60  # seconds
 
+    # === Webhook ===
+    webhook_enabled: bool = False
+    webhook_secret: SecretStr | None = None
+    webhook_host: str = "0.0.0.0"
+    webhook_port: int = 8080
+
     # === PDF Output (Phase 8) ===
     output_dir: Path = Path("./output")
     pdf_include_cot: bool = False

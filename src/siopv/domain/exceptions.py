@@ -182,3 +182,18 @@ class IntegrityError(SecurityError):
 
 class SchemaValidationError(SecurityError):
     """External data schema validation failed."""
+
+
+# === Webhook Errors ===
+
+
+class WebhookError(SIOPVError):
+    """Base error for webhook operations."""
+
+
+class WebhookAuthenticationError(WebhookError):
+    """Webhook signature verification failed."""
+
+
+class WebhookPayloadError(WebhookError):
+    """Webhook payload is malformed or invalid."""

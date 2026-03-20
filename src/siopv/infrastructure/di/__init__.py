@@ -78,6 +78,7 @@ from siopv.infrastructure.di.output import (
     build_metrics_exporter,
     build_pdf_adapter,
 )
+from siopv.infrastructure.di.webhook import build_webhook_receiver
 
 __all__ = [
     "EscalationConfig",
@@ -94,6 +95,7 @@ __all__ = [
     "build_threshold_config",
     "build_trivy_parser",
     "build_vector_store",
+    "build_webhook_receiver",
     "create_authorization_adapter",
     "create_oidc_adapter",
     "create_oidc_middleware",
