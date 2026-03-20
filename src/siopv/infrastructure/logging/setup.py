@@ -22,9 +22,13 @@ def configure_logging(
         json_format: If True, output JSON. If False, colored console.
         app_name: Application name bound to every log event.
     """
-    # Shared processors (no ExceptionRenderer here — ConsoleRenderer handles it natively)
+    # Shared processors for both structlog and foreign (stdlib) loggers.
+    # Note: filter_by_level is NOT included here because it requires a
+    # bound logger with a 'disabled' attribute. Foreign loggers (e.g.,
+    # Presidio running in thread pools) pass through foreign_pre_chain
+    # with a raw stdlib LogRecord where the logger ref can be None,
+    # causing AttributeError: 'NoneType' has no attribute 'disabled'.
     shared_processors: list[structlog.typing.Processor] = [
-        structlog.stdlib.filter_by_level,
         structlog.stdlib.add_logger_name,
         structlog.stdlib.add_log_level,
         structlog.stdlib.PositionalArgumentsFormatter(),
@@ -59,6 +63,7 @@ def configure_logging(
     structlog.configure(
         processors=[
             structlog.contextvars.merge_contextvars,
+            structlog.stdlib.filter_by_level,
             *shared_processors,
             structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
         ],
@@ -85,10 +90,12 @@ def configure_logging(
     root_logger.addHandler(handler)
     root_logger.setLevel(getattr(logging, level))
 
-    # Suppress noisy loggers
+    # Suppress noisy third-party loggers
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("httpcore").setLevel(logging.WARNING)
     logging.getLogger("chromadb").setLevel(logging.WARNING)
+    logging.getLogger("presidio_analyzer").setLevel(logging.WARNING)
+    logging.getLogger("presidio_anonymizer").setLevel(logging.WARNING)
 
 
 def get_logger(name: str) -> structlog.stdlib.BoundLogger:
