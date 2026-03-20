@@ -237,31 +237,33 @@ class OpenFGAAdapter(AuthorizationPort, AuthorizationStorePort, AuthorizationMod
 
         return self._owned_client
 
-    def _resolve_relation_for_action(self, context: AuthorizationContext) -> Relation:
-        """Resolve the relation to check based on the action or direct relation.
+    def _resolve_relations_for_action(self, context: AuthorizationContext) -> list[Relation]:
+        """Resolve all relations to check for an action.
+
+        Returns all relations that could satisfy the permission requirement.
+        The caller should check each relation and allow if ANY returns True.
+        This follows the principle: Action.VIEW is allowed for viewer OR
+        analyst OR auditor OR owner OR admin.
 
         Args:
             context: Authorization context with action or direct_relation.
 
         Returns:
-            The relation to check.
+            List of relations to check (at least one must be satisfied).
 
         Raises:
             ActionNotMappedError: If action has no relation mapping.
         """
-        # Direct relation takes precedence
+        # Direct relation takes precedence — check only that one
         if context.direct_relation:
-            return context.direct_relation
+            return [context.direct_relation]
 
-        # Look up action mapping
+        # Look up action mapping — returns all required relations
         mapping = self._action_mappings.get(context.action)
         if not mapping or not mapping.required_relations:
             raise ActionNotMappedError(context.action)
 
-        # Return first required relation (primary permission)
-        # The OpenFGA model should define computed relations like can_view
-        # For now, we check against the first required relation
-        return next(iter(mapping.required_relations))
+        return list(mapping.required_relations)
 
     def _domain_tuple_to_client_tuple(self, relationship: RelationshipTuple) -> ClientTuple:
         """Convert domain RelationshipTuple to OpenFGA ClientTuple.
@@ -360,7 +362,7 @@ class OpenFGAAdapter(AuthorizationPort, AuthorizationStorePort, AuthorizationMod
 
         try:
             client = await self._get_client()
-            relation = self._resolve_relation_for_action(context)
+            relations = self._resolve_relations_for_action(context)
 
             # Build contextual tuples if present
             contextual_tuples: list[ClientTuple] | None = None
@@ -369,21 +371,29 @@ class OpenFGAAdapter(AuthorizationPort, AuthorizationStorePort, AuthorizationMod
                     self._domain_tuple_to_client_tuple(t) for t in context.contextual_tuples
                 ]
 
-            # Execute check with circuit breaker
+            # Check each relation — allow if ANY returns True
+            # This implements OR semantics: VIEW is allowed for
+            # viewer OR analyst OR auditor OR owner OR admin
+            allowed = False
+            checked_relation = relations[0]  # default for result reporting
             async with self._circuit_breaker:
-                allowed = await self._execute_check(
-                    client,
-                    context.user.to_openfga_format(),
-                    relation.value,
-                    context.resource.to_openfga_format(),
-                    contextual_tuples,
-                )
+                for relation in relations:
+                    if await self._execute_check(
+                        client,
+                        context.user.to_openfga_format(),
+                        relation.value,
+                        context.resource.to_openfga_format(),
+                        contextual_tuples,
+                    ):
+                        allowed = True
+                        checked_relation = relation
+                        break  # short-circuit on first allowed relation
 
             duration_ms = (time.perf_counter() - start_time) * 1000
 
             result = AuthorizationResult.from_openfga_response(
                 context=context,
-                checked_relation=relation,
+                checked_relation=checked_relation,
                 openfga_allowed=allowed,
                 check_duration_ms=duration_ms,
             )
@@ -460,21 +470,25 @@ class OpenFGAAdapter(AuthorizationPort, AuthorizationStorePort, AuthorizationMod
         relation_map: list[Relation] = []
 
         for ctx in contexts:
-            relation = self._resolve_relation_for_action(ctx)
-            relation_map.append(relation)
+            relations = self._resolve_relations_for_action(ctx)
+            # For batch checks, expand each context into one check item per
+            # relation so that any matching relation satisfies the permission.
+            # The _process_batch_response must handle the N:1 mapping back.
+            for relation in relations:
+                relation_map.append(relation)
 
-            item = ClientBatchCheckItem(
-                user=ctx.user.to_openfga_format(),
-                relation=relation.value,
-                object=ctx.resource.to_openfga_format(),
-            )
+                item = ClientBatchCheckItem(
+                    user=ctx.user.to_openfga_format(),
+                    relation=relation.value,
+                    object=ctx.resource.to_openfga_format(),
+                )
 
-            if ctx.contextual_tuples:
-                item.contextual_tuples = [
-                    self._domain_tuple_to_client_tuple(t) for t in ctx.contextual_tuples
-                ]
+                if ctx.contextual_tuples:
+                    item.contextual_tuples = [
+                        self._domain_tuple_to_client_tuple(t) for t in ctx.contextual_tuples
+                    ]
 
-            check_items.append(item)
+                check_items.append(item)
 
         return check_items, relation_map
 
