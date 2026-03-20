@@ -147,7 +147,7 @@ def wait_for_keycloak(timeout: int = HEALTH_CHECK_TIMEOUT) -> bool:
 
     while time.time() - start_time < timeout:
         try:
-            response = urllib.request.urlopen(f"{KEYCLOAK_BASE_URL}/health/ready", timeout=5)
+            response = urllib.request.urlopen(f"{KEYCLOAK_BASE_URL}/realms/master", timeout=5)
             if response.status == HTTP_OK:
                 print("Keycloak is ready")
                 return True

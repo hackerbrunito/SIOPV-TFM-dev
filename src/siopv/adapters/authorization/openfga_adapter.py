@@ -216,21 +216,24 @@ class OpenFGAAdapter(AuthorizationPort, AuthorizationStorePort, AuthorizationMod
             logger.info("openfga_client_closed")
 
     async def _get_client(self) -> OpenFgaClient:
-        """Get the OpenFGA client instance.
+        """Get the OpenFGA client instance, lazily initializing if needed.
+
+        Implements lazy initialization pattern: the client connection is
+        established on first use rather than requiring an explicit
+        initialize() call. This is safe because initialize() is idempotent
+        and _get_client is the single gateway for all OpenFGA operations.
 
         Returns:
             Configured OpenFgaClient instance.
 
         Raises:
-            StoreNotFoundError: If client is not initialized.
+            StoreNotFoundError: If required configuration (api_url, store_id) is missing.
         """
         if self._external_client:
             return self._external_client
 
         if self._owned_client is None:
-            raise StoreNotFoundError(
-                details={"reason": "OpenFGA client not initialized. Call initialize() first."}
-            )
+            await self.initialize()
 
         return self._owned_client
 

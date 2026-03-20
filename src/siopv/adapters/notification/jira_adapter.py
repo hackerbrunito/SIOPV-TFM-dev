@@ -23,8 +23,9 @@ if TYPE_CHECKING:
 logger = structlog.get_logger(__name__)
 
 # Priority mapping: risk_score → Jira priority name
+# Uses standard Jira Cloud priority names: Highest, High, Medium, Low, Lowest
 _PRIORITY_THRESHOLDS: list[tuple[float, str]] = [
-    (0.9, "Critical"),
+    (0.9, "Highest"),
     (0.7, "High"),
     (0.4, "Medium"),
 ]
@@ -32,7 +33,7 @@ _DEFAULT_PRIORITY = "Low"
 
 # SLA due dates by severity (days from creation)
 _SLA_DAYS: dict[str, int] = {
-    "Critical": 1,
+    "Highest": 1,
     "High": 7,
     "Medium": 30,
     "Low": 90,
@@ -127,6 +128,7 @@ class JiraAdapter(JiraClientPort):
         self._project_key = settings.jira_project_key or "SEC"
         self._email = settings.jira_email or ""
         self._environment = settings.environment
+        self._issue_type = getattr(settings, "jira_issue_type", None) or "Task"
         self._reporter = "siopv-bot"
 
         # Build Basic Auth header
@@ -248,16 +250,20 @@ class JiraAdapter(JiraClientPort):
             "project": {"key": self._project_key},
             "summary": summary,
             "description": _build_adf_text(full_description),
-            "issuetype": {"name": "Bug"},
+            "issuetype": {"name": self._issue_type},
             "priority": {"name": priority},
             "labels": labels,
             "duedate": due_date,
-            "environment": self._environment,
         }
 
-        # Components (field 6)
-        if package and package != "unknown":
-            fields["components"] = [{"name": package}]
+        # Environment tracked via label (Jira API v3 environment field
+        # requires ADF format or may not be available on all project types)
+        if self._environment:
+            labels.append(f"env-{self._environment}")
+
+        # Components (field 6) — only include if component exists in Jira project
+        # Skipped by default: auto-creating components requires admin permissions
+        # Package info is captured in labels instead
 
         # Reporter (field 8) — only if Jira allows setting reporter
         # Assignee (field 9) — skip unless configured per severity tier

@@ -84,6 +84,7 @@ class Settings(BaseSettings):
     jira_email: str | None = None
     jira_api_token: SecretStr | None = None
     jira_project_key: str | None = None
+    jira_issue_type: str = "Task"
 
     # === ChromaDB ===
     chroma_persist_dir: Path = Path("./chroma_data")
