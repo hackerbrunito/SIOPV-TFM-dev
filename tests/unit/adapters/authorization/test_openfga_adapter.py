@@ -195,15 +195,20 @@ class TestOpenFGAAdapterInitialization:
             assert adapter._owned_client is None
 
     @pytest.mark.asyncio
-    async def test_get_client_raises_error_if_not_initialized(
+    async def test_get_client_lazy_initializes_if_not_initialized(
         self,
         mock_settings: MagicMock,
     ) -> None:
-        """Test _get_client raises error if client not initialized."""
+        """Test _get_client lazily initializes the client on first call."""
         adapter = OpenFGAAdapter(mock_settings)
 
-        with pytest.raises(StoreNotFoundError, match="not initialized"):
-            await adapter._get_client()
+        with patch(
+            "siopv.adapters.authorization.openfga_adapter.OpenFgaClient"
+        ) as mock_client_class:
+            mock_client_instance = AsyncMock()
+            mock_client_class.return_value = mock_client_instance
+            client = await adapter._get_client()
+            assert client is mock_client_instance
 
     @pytest.mark.asyncio
     async def test_get_client_returns_owned_client_after_initialize(
@@ -859,13 +864,12 @@ class TestAuthorizationPortBatchCheck:
             await adapter_with_mock_client.batch_check(contexts)
 
     @pytest.mark.asyncio
-    async def test_batch_check_store_not_found_error_propagates(
+    async def test_batch_check_lazy_initializes_client(
         self,
         mock_settings: MagicMock,
         sample_resource: ResourceId,
     ) -> None:
-        """Test batch_check propagates StoreNotFoundError."""
-        # Create adapter without initializing client
+        """Test batch_check lazily initializes the client if not initialized."""
         adapter = OpenFGAAdapter(mock_settings)
 
         contexts = [
@@ -876,9 +880,18 @@ class TestAuthorizationPortBatchCheck:
             ),
         ]
 
-        # Should raise StoreNotFoundError (not wrapped)
-        with pytest.raises(StoreNotFoundError):
-            await adapter.batch_check(contexts)
+        # With lazy init, _get_client will initialize — mock it to prevent real connection
+        with patch(
+            "siopv.adapters.authorization.openfga_adapter.OpenFgaClient"
+        ) as mock_client_class:
+            mock_client_instance = AsyncMock()
+            mock_response = MagicMock()
+            mock_response.result = [MagicMock(allowed=True, request=MagicMock())]
+            mock_client_instance.batch_check.return_value = mock_response
+            mock_client_class.return_value = mock_client_instance
+
+            result = await adapter.batch_check(contexts)
+            assert result is not None
 
 
 class TestAuthorizationPortCheckRelation:

@@ -113,8 +113,14 @@ class GenerateReportUseCase:
     async def _create_jira_tickets(self, state: PipelineState) -> tuple[list[str], list[str]]:
         """Create Jira tickets for classified vulnerabilities.
 
+        Builds a rich vulnerability_data dict for each CVE, combining data
+        from all pipeline phases: ingestion (vulnerability metadata),
+        enrichment (NVD, EPSS, GitHub), classification (ML + LLM), and
+        output (PDF report path). This ensures Jira tickets contain the
+        full intelligence SIOPV produces, not just a classification label.
+
         Args:
-            state: Pipeline state with classification results
+            state: Pipeline state with all phase results
 
         Returns:
             Tuple of (created ticket keys, error messages)
@@ -126,6 +132,16 @@ class GenerateReportUseCase:
         if not classifications:
             logger.warning("no_classifications_for_jira")
             return keys, errors
+
+        # Gather all available data from pipeline state
+        vuln_list = state.get("vulnerabilities", [])
+        vulnerabilities: dict[str, Any] = {}
+        for v in vuln_list:
+            if hasattr(v, "cve_id") and hasattr(v.cve_id, "value"):
+                vulnerabilities[v.cve_id.value] = v
+        enrichments = state.get("enrichments", {})
+        llm_confidence = state.get("llm_confidence", {})
+        pdf_path = state.get("output_pdf_path")
 
         for cve_id, classification in classifications.items():
             try:
@@ -139,10 +155,15 @@ class GenerateReportUseCase:
                     keys.append(existing_key)
                     continue
 
-                vulnerability_data: dict[str, Any] = {
-                    "cve_id": cve_id,
-                    "classification": classification,
-                }
+                # Build rich vulnerability data from all pipeline phases
+                vulnerability_data = self._build_jira_vulnerability_data(
+                    cve_id=cve_id,
+                    classification=classification,
+                    vulnerability=vulnerabilities.get(cve_id),
+                    enrichment=enrichments.get(cve_id),
+                    llm_conf=llm_confidence.get(cve_id),
+                    pdf_path=pdf_path,
+                )
                 ticket_key = await self._jira.create_ticket(vulnerability_data)
                 keys.append(ticket_key)
                 logger.info(
@@ -156,6 +177,69 @@ class GenerateReportUseCase:
                 errors.append(error_msg)
 
         return keys, errors
+
+    def _build_jira_vulnerability_data(
+        self,
+        *,
+        cve_id: str,
+        classification: Any,
+        vulnerability: Any | None,
+        enrichment: Any | None,
+        llm_conf: float | None,
+        pdf_path: str | None,
+    ) -> dict[str, Any]:
+        """Build rich vulnerability data dict for Jira ticket creation.
+
+        Combines data from all pipeline phases so the Jira ticket contains
+        the full intelligence SIOPV produces: vulnerability metadata,
+        enrichment data (NVD, EPSS, GitHub), ML classification, LLM
+        confidence, remediation guidance, and a link to the PDF report.
+        """
+        data: dict[str, Any] = {
+            "cve_id": cve_id,
+            "classification": classification,
+        }
+
+        # Vulnerability metadata from ingestion (Phase 1)
+        if vulnerability is not None:
+            data["package"] = getattr(vulnerability, "package_name", "unknown")
+            installed = getattr(vulnerability, "installed_version", None)
+            data["version"] = str(getattr(installed, "value", None) or installed or "unknown")
+            fixed = getattr(vulnerability, "fixed_version", None)
+            data["fixed_version"] = str(getattr(fixed, "value", None) or fixed or "")
+            data["severity"] = getattr(vulnerability, "severity", "MEDIUM")
+            cvss = getattr(vulnerability, "cvss_v3_score", None)
+            data["cvss_score"] = getattr(cvss, "value", cvss)
+            data["description"] = getattr(vulnerability, "description", "")
+            data["primary_url"] = getattr(vulnerability, "primary_url", "")
+
+        # Enrichment data from CRAG (Phase 2) — NVD, EPSS, GitHub
+        if enrichment is not None:
+            if hasattr(enrichment, "epss_score"):
+                data["epss_score"] = enrichment.epss_score
+            if hasattr(enrichment, "epss_percentile"):
+                data["epss_percentile"] = enrichment.epss_percentile
+            if hasattr(enrichment, "cvss_vector"):
+                data["cvss_vector"] = enrichment.cvss_vector
+            if hasattr(enrichment, "exploit_available"):
+                data["exploit_available"] = enrichment.exploit_available
+            if hasattr(enrichment, "attack_vector"):
+                data["attack_vector"] = enrichment.attack_vector
+            if hasattr(enrichment, "remediation") and enrichment.remediation:
+                data["recommendation"] = enrichment.remediation
+
+        # ML + LLM classification (Phase 3)
+        if hasattr(classification, "risk_score") and classification.risk_score is not None:
+            data["risk_score"] = classification.risk_score.risk_probability
+            data["ml_confidence"] = getattr(classification.risk_score, "confidence", None)
+        if llm_conf is not None:
+            data["llm_confidence"] = llm_conf
+
+        # PDF report link (Phase 8)
+        if pdf_path:
+            data["pdf_report_path"] = pdf_path
+
+        return data
 
     def _generate_pdf(self, state: PipelineState) -> tuple[str | None, list[str]]:
         """Generate PDF report from pipeline state.

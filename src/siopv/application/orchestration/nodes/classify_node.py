@@ -5,6 +5,7 @@ Handles Phase 3: ML-based risk classification with XAI explanations.
 
 from __future__ import annotations
 
+import asyncio
 from typing import TYPE_CHECKING
 
 import structlog
@@ -132,36 +133,38 @@ async def _run_classification(
     classifications: dict[str, ClassificationResult] = {}
     llm_confidence: dict[str, float] = {}
 
+    # First pass: collect all classifications
     for classification_result in result.results:
         cve_id = classification_result.cve_id
         classifications[cve_id] = classification_result
 
-        if classification_result.risk_score is not None:
-            if llm_analysis is not None:
-                # Real LLM confidence evaluation
+    # Second pass: evaluate LLM confidence with bounded concurrency
+    # Limits parallel API calls to avoid Anthropic rate limits and timeouts
+    _LLM_CONCURRENCY = 5  # noqa: N806
+
+    if llm_analysis is not None:
+        semaphore = asyncio.Semaphore(_LLM_CONCURRENCY)
+
+        async def _evaluate_one(cve_id: str, cr: ClassificationResult) -> tuple[str, float]:
+            async with semaphore:
+                assert cr.risk_score is not None  # guaranteed by caller filter
                 classification_dict = {
                     "cve_id": cve_id,
-                    "risk_probability": classification_result.risk_score.risk_probability,
-                    "risk_label": classification_result.risk_score.risk_label,
+                    "risk_probability": cr.risk_score.risk_probability,
+                    "risk_label": cr.risk_score.risk_label,
                 }
                 enrichment_dict = {}
                 enrichment_obj = enrichments.get(cve_id)
                 if enrichment_obj is not None:
-                    # EnrichmentData at runtime
                     enrichment_dict = {
                         "cve_id": enrichment_obj.cve_id,  # type: ignore[attr-defined]
                         "relevance_score": enrichment_obj.relevance_score,  # type: ignore[attr-defined]
                     }
                 try:
-                    llm_confidence[cve_id] = await llm_analysis.evaluate_confidence(
+                    conf = await llm_analysis.evaluate_confidence(
                         cve_id,
                         classification_dict,
                         enrichment_dict,
-                    )
-                    logger.info(
-                        "llm_confidence_evaluated",
-                        cve_id=cve_id,
-                        confidence=llm_confidence[cve_id],
                     )
                 except Exception as exc:
                     logger.warning(
@@ -169,16 +172,42 @@ async def _run_classification(
                         cve_id=cve_id,
                         error=str(exc),
                     )
-                    llm_confidence[cve_id] = _estimate_llm_confidence_fallback(
-                        classification_result,
+                    fallback = _estimate_llm_confidence_fallback(
+                        cr,
                         enrichments.get(cve_id),  # type: ignore[arg-type]
                     )
-            else:
-                # Heuristic fallback when no LLM is configured
-                llm_confidence[cve_id] = _estimate_llm_confidence_fallback(
-                    classification_result,
-                    enrichments.get(cve_id),  # type: ignore[arg-type]
-                )
+                    return cve_id, fallback
+                else:
+                    logger.info(
+                        "llm_confidence_evaluated",
+                        cve_id=cve_id,
+                        confidence=conf,
+                    )
+                    return cve_id, conf
+
+        # Build tasks for CVEs that have risk scores
+        tasks = [
+            _evaluate_one(cve_id, cr)
+            for cve_id, cr in classifications.items()
+            if cr.risk_score is not None
+        ]
+
+        # Run all LLM evaluations with bounded concurrency
+        if tasks:
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            for result_item in results:
+                if isinstance(result_item, tuple):
+                    cve_id, conf = result_item
+                    llm_confidence[cve_id] = conf
+                # Exceptions already logged in _evaluate_one
+
+    # Heuristic fallback for CVEs without LLM evaluation
+    for cve_id, cr in classifications.items():
+        if cve_id not in llm_confidence:
+            llm_confidence[cve_id] = _estimate_llm_confidence_fallback(
+                cr,
+                enrichments.get(cve_id),  # type: ignore[arg-type]
+            )
 
     # typed dicts narrower than tuple[dict[str, object], ...] return type
     return classifications, llm_confidence  # type: ignore[return-value]

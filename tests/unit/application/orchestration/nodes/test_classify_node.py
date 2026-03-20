@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -129,19 +129,28 @@ class TestClassifyNode:
         mock_llm = AsyncMock()
         mock_llm.evaluate_confidence.return_value = 0.92
 
+        # Mock the use case's execute_batch to return a proper ClassificationResult
+        mock_risk_score = RiskScore.from_prediction(cve_id="CVE-2024-1234", probability=0.85)
+        mock_cr = ClassificationResult(cve_id="CVE-2024-1234", risk_score=mock_risk_score)
+        mock_batch_result = MagicMock()
+        mock_batch_result.results = [mock_cr]
+
         state = {
             **create_initial_state(),
             "vulnerabilities": [mock_vulnerability],
             "enrichments": {"CVE-2024-1234": mock_enrichment},
         }
 
-        result = await classify_node(state, classifier=mock_classifier, llm_analysis=mock_llm)
+        with patch(
+            "siopv.application.orchestration.nodes.classify_node.ClassifyRiskUseCase"
+        ) as mock_use_case_class:
+            mock_use_case_class.return_value.execute_batch.return_value = mock_batch_result
+            result = await classify_node(state, classifier=mock_classifier, llm_analysis=mock_llm)
 
         assert result["current_node"] == "classify"
-        # If classification succeeded, LLM confidence should have been called
-        if "CVE-2024-1234" in result.get("llm_confidence", {}):
-            assert result["llm_confidence"]["CVE-2024-1234"] == 0.92
-            mock_llm.evaluate_confidence.assert_called()
+        assert "CVE-2024-1234" in result.get("llm_confidence", {})
+        assert result["llm_confidence"]["CVE-2024-1234"] == 0.92
+        mock_llm.evaluate_confidence.assert_called()
 
     @pytest.mark.asyncio
     async def test_classify_node_llm_fallback_on_error(

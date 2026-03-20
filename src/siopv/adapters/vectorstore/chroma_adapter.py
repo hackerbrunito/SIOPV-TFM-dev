@@ -109,6 +109,11 @@ class ChromaDBAdapter(VectorStorePort):
         self._external_client = client
         self._owned_client: object | None = None
         self._collection: Collection | None = None
+        # Lock to serialize ChromaDB operations — ChromaDB's in-process
+        # client is not fully thread-safe for concurrent collection access.
+        # Without this, concurrent run_in_executor calls can produce
+        # internal event ID collisions on large batches (1500+ CVEs).
+        self._lock = asyncio.Lock()
 
         logger.info(
             "chromadb_adapter_initialized",
@@ -200,14 +205,19 @@ class ChromaDBAdapter(VectorStorePort):
     async def _run_sync(self, func: functools.partial[_T]) -> _T:
         """Run a synchronous ChromaDB call in a thread pool executor.
 
+        Serialized via asyncio.Lock to prevent concurrent collection access,
+        which causes internal event ID collisions in ChromaDB's in-process
+        client on large batches.
+
         Args:
             func: A functools.partial wrapping the sync call
 
         Returns:
             The result of the sync call
         """
-        loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(None, func)
+        async with self._lock:
+            loop = asyncio.get_running_loop()
+            return await loop.run_in_executor(None, func)
 
     async def store_enrichment(self, enrichment: EnrichmentData) -> str:
         """Store enrichment data with generated embedding.

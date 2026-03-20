@@ -514,7 +514,9 @@ def test_settings_ignores_extra_fields() -> None:
 # === OpenFGA Validation Error Tests ===
 
 
-def test_settings_openfga_auth_method_api_token_missing_token_raises() -> None:
+def test_settings_openfga_auth_method_api_token_missing_token_raises(
+    settings_no_env_file: None,  # noqa: ARG001
+) -> None:
     """Test ValueError when api_token auth method but token not set."""
     with (
         patch.dict(
