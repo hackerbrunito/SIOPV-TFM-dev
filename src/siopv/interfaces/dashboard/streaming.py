@@ -100,6 +100,7 @@ def stream_pipeline_events(
     *,
     user_id: str | None = None,
     project_id: str | None = None,
+    system_execution: bool = False,
     thread_id: str | None = None,
     stream_timeout_seconds: int = 600,
 ) -> Generator[PipelineEvent, None, PipelineState | None]:
@@ -114,6 +115,7 @@ def stream_pipeline_events(
         ports: Fully wired ``PipelinePorts`` (use ``build_pipeline_ports``).
         user_id: Optional user ID for authorization.
         project_id: Optional project ID for authorization context.
+        system_execution: If True, allows anonymous execution without user_id.
         thread_id: Optional checkpoint thread ID (defaults to a new UUID).
         stream_timeout_seconds: Maximum seconds to wait for the next event
             before raising ``TimeoutError``.
@@ -136,6 +138,7 @@ def stream_pipeline_events(
         thread_id=effective_thread_id,
         user_id=user_id,
         project_id=project_id,
+        system_execution=system_execution,
     )
 
     config: RunnableConfig = {"configurable": {"thread_id": effective_thread_id}}
