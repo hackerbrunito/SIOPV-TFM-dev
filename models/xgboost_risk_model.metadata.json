@@ -1,0 +1,110 @@
+{
+  "model_name": "xgboost_risk_model",
+  "trained_at": "2026-03-21T10:47:19.533687+00:00",
+  "model_type": "XGBClassifier",
+  "task": "binary_exploitation_prediction",
+  "features": [
+    "cvss_base_score",
+    "attack_vector",
+    "attack_complexity",
+    "privileges_required",
+    "user_interaction",
+    "scope",
+    "confidentiality_impact",
+    "integrity_impact",
+    "availability_impact",
+    "epss_score",
+    "epss_percentile",
+    "days_since_publication",
+    "has_exploit_ref",
+    "cwe_category",
+    "has_public_exploit",
+    "has_metasploit",
+    "num_references"
+  ],
+  "feature_count": 17,
+  "metrics": {
+    "accuracy": 0.9958926967013221,
+    "precision": 0.9596977329974811,
+    "recall": 0.8264642082429501,
+    "f1": 0.8881118881118881,
+    "auc_roc": 0.9934900882675505,
+    "optimal_threshold": 0.5299999999999998,
+    "confusion_matrix": [
+      [
+        22896,
+        16
+      ],
+      [
+        80,
+        381
+      ]
+    ],
+    "classification_report": {
+      "0": {
+        "precision": 0.9965181058495822,
+        "recall": 0.9993016759776536,
+        "f1-score": 0.997907949790795,
+        "support": 22912.0
+      },
+      "1": {
+        "precision": 0.9596977329974811,
+        "recall": 0.8264642082429501,
+        "f1-score": 0.8881118881118881,
+        "support": 461.0
+      },
+      "accuracy": 0.9958926967013221,
+      "macro avg": {
+        "precision": 0.9781079194235316,
+        "recall": 0.9128829421103019,
+        "f1-score": 0.9430099189513416,
+        "support": 23373.0
+      },
+      "weighted avg": {
+        "precision": 0.995791875075406,
+        "recall": 0.9958926967013221,
+        "f1-score": 0.9957423747925501,
+        "support": 23373.0
+      }
+    },
+    "train_samples": 93492,
+    "train_samples_after_smote": 101780,
+    "test_samples": 23373,
+    "positive_train": 1842,
+    "positive_train_after_smote": 10130,
+    "positive_test": 461,
+    "smote_strategy": 0.11053996502171701,
+    "optuna_trials": 50,
+    "optuna_best_params": {
+      "smote_ratio": 0.11053996502171701,
+      "n_estimators": 712,
+      "max_depth": 7,
+      "learning_rate": 0.025607211016753086,
+      "min_child_weight": 7,
+      "subsample": 0.6101386619263804,
+      "colsample_bytree": 0.7023975068405521,
+      "gamma": 0.0780298076375101,
+      "reg_alpha": 0.6644087474242915,
+      "reg_lambda": 1.0681708654886761
+    },
+    "feature_importance": {
+      "cvss_base_score": 0.005538345314562321,
+      "attack_vector": 0.014955200254917145,
+      "attack_complexity": 0.00801936537027359,
+      "privileges_required": 0.008363948203623295,
+      "user_interaction": 0.008630906231701374,
+      "scope": 0.011123222298920155,
+      "confidentiality_impact": 0.00522839417681098,
+      "integrity_impact": 0.006829679943621159,
+      "availability_impact": 0.006115130614489317,
+      "epss_score": 0.08835214376449585,
+      "epss_percentile": 0.03529711440205574,
+      "days_since_publication": 0.0,
+      "has_exploit_ref": 0.012387542054057121,
+      "cwe_category": 0.006701258942484856,
+      "has_public_exploit": 0.026885246858000755,
+      "has_metasploit": 0.7261152267456055,
+      "num_references": 0.02945731021463871
+    }
+  }
+}
