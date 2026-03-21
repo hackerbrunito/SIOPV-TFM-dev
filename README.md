@@ -1,20 +1,96 @@
+🇬🇧 English (current) | 🇪🇸 [Leer en Español](README.es.md)
+
 # SIOPV
 
 **Sistema Inteligente de Orquestación y Priorización de Vulnerabilidades**
+**Intelligent Automated Vulnerability Orchestration and Prioritization System**
 
-SIOPV is an automated vulnerability analysis pipeline that receives Trivy scan reports, enriches them with threat intelligence from multiple sources (NVD, EPSS, GitHub Security Advisories), classifies risk using ML models, and delivers prioritized results as Jira tickets and PDF audit reports. It is designed to operate as a downstream component in CI/CD pipelines, processing vulnerability data automatically with built-in authorization, privacy controls, and human-in-the-loop escalation.
+SIOPV is a fully automated, intelligent vulnerability analysis system designed to operate as the next stage after CI/CD security scanning in the Software Development Life Cycle (SDLC). When a CI/CD pipeline completes a vulnerability scan (e.g., Trivy), SIOPV automatically receives the results via webhook, enriches them with threat intelligence from multiple sources (NVD, EPSS, GitHub Security Advisories) using a Corrective RAG (CRAG) pattern — where a judge LLM evaluates the relevance of retrieved information and triggers OSINT fallback if quality is insufficient — classifies risk using XGBoost ML models with LLM confidence evaluation, and delivers prioritized, actionable results as Jira tickets and PDF audit reports, with no manual intervention required.
+
+---
+
+## SDLC Integration
+
+SIOPV operates as the automated analysis layer between CI/CD scanning and developer action:
+
+```
+CI/CD Pipeline
+  │
+  ▼
+Trivy Scanner ──▶ JSON Report
+  │
+  ▼
+SIOPV Webhook (HMAC-SHA256 verification)
+  │
+  ▼
+┌─ Authorize ──▶ Ingest ──▶ DLP ──▶ Enrich ──▶ Classify ──▶ [Escalate] ──▶ Output ─┐
+│  (OpenFGA)     (Parser)   (Presidio) (CRAG +    (XGBoost +   (HITL if      (Generate) │
+│                                       Judge LLM)  LLM conf.)  uncertain)              │
+└───────────────────────────────────────────────────────────────────────────────────────┘
+  │                    │                    │
+  ▼                    ▼                    ▼
+Jira Tickets       PDF Report          CSV/JSON Metrics
+(prioritized)      (audit trail)       (analytics)
+```
+
+---
+
+## Pipeline Detail
+
+```
+                         SIOPV Processing Pipeline
+
+    Webhook :8080
+    POST /api/v1/webhook/trivy
+    (HMAC-SHA256 verified)
+         │
+         │  Trivy JSON Report
+         ▼
+    ┌──────────┐
+    │ Receive  │ ── 202 Accepted (async processing)
+    └────┬─────┘
+         │
+         ▼
+    Step 1: AUTHORIZE
+    └─ OpenFGA ReBAC check (user + role + project)
+         │
+         ▼
+    Step 2: INGEST
+    └─ Parse Trivy JSON (extract CVEs, packages, versions, severities)
+         │
+         ▼
+    Step 3: DLP
+    └─ Presidio PII detection (anonymize sensitive data)
+         │
+         ▼
+    Step 4: ENRICH
+    └─ Query NVD, EPSS, GitHub Security Advisories
+    └─ CRAG: Judge LLM evaluates relevance of retrieved data
+    └─ OSINT fallback if relevance score < threshold
+         │
+         ▼
+    Step 5: CLASSIFY
+    └─ XGBoost ML risk scoring
+    └─ LLM confidence evaluation
+    └─ SHAP/LIME explainability
+         │
+         ▼
+    Step 6: ESCALATE (conditional)
+    └─ If ML vs LLM discrepancy exceeds threshold →
+       Human-in-the-Loop review (Streamlit dashboard)
+         │
+         ▼
+    Step 7: OUTPUT
+    └─ Jira tickets (prioritized, with full enrichment data)
+    └─ PDF audit report
+    └─ CSV + JSON metrics
+```
 
 ---
 
 ## Architecture
 
-SIOPV follows a hexagonal (ports & adapters) architecture with an 8-phase LangGraph pipeline:
-
-```
-Trivy Scan → Webhook/CLI → SIOPV Pipeline → Jira Tickets + PDF Report
-```
-
-### Pipeline Flow
+SIOPV follows a hexagonal (ports & adapters) architecture with a 7-node LangGraph pipeline:
 
 ```
 START → authorize → ingest → dlp → enrich → classify → [escalate] → output → END
@@ -353,4 +429,6 @@ The smoke test suite validates operational robustness:
 
 ## License
 
-MIT
+Copyright 2026 Carlos Val Souto
+
+Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) for details.

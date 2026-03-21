@@ -63,10 +63,10 @@ htmlcov/
 chroma_data/
 
 # ML Models (large files)
-models/*.json
 models/*.pkl
 models/*.joblib
 !models/.gitkeep
+!models/xgboost_risk_model.json
 
 # Output (root-level only, not adapters/output/ or tests/.../output/)
 /output/
