@@ -27,7 +27,7 @@ def _check_spacy_model(model_name: str = "en_core_web_lg") -> None:
     early with a clear, actionable message.
     """
     try:
-        import spacy  # type: ignore[import-not-found]  # noqa: PLC0415
+        import spacy  # noqa: PLC0415
 
         spacy.load(model_name)
         logger.debug("spacy_model_available", model=model_name)
