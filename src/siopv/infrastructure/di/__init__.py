@@ -78,6 +78,7 @@ from siopv.infrastructure.di.output import (
     build_metrics_exporter,
     build_pdf_adapter,
 )
+from siopv.infrastructure.di.pipeline import build_pipeline_ports
 from siopv.infrastructure.di.webhook import build_webhook_receiver
 
 __all__ = [
@@ -92,6 +93,7 @@ __all__ = [
     "build_nvd_client",
     "build_osint_client",
     "build_pdf_adapter",
+    "build_pipeline_ports",
     "build_threshold_config",
     "build_trivy_parser",
     "build_vector_store",

@@ -32,3 +32,47 @@ CONFIDENCE_SCALE_FACTOR = 2  # Scale factor: abs(prob - 0.5) * 2
 # Dashboard display limits
 CASE_LIST_CVE_DISPLAY_LIMIT = 3  # Max CVE IDs shown inline before "+N more"
 ELAPSED_TIME_HOURS_PER_DAY = 24  # Hours threshold for switching to "Nd ago" display
+
+# Pipeline Monitor — node topology and display metadata
+PIPELINE_NODE_SEQUENCE: tuple[str, ...] = (
+    "authorize",
+    "ingest",
+    "dlp",
+    "enrich",
+    "classify",
+    "escalate",
+    "output",
+)
+"""Ordered tuple of pipeline graph node names matching graph.py topology."""
+
+PIPELINE_NODE_LABELS: dict[str, str] = {
+    "authorize": "Authorization",
+    "ingest": "Ingestion",
+    "dlp": "DLP Scan",
+    "enrich": "Enrichment",
+    "classify": "Classification",
+    "escalate": "Escalation",
+    "output": "Output",
+}
+"""Human-readable labels for pipeline nodes (UI display)."""
+
+PIPELINE_NODE_DESCRIPTIONS: dict[str, str] = {
+    "authorize": "Zero Trust gatekeeper — validates user/project authorization via OpenFGA",
+    "ingest": "Parses Trivy JSON report into structured VulnerabilityRecord entities",
+    "dlp": "Presidio DLP guardrail — sanitizes PII from vulnerability descriptions",
+    "enrich": "CRAG enrichment — NVD, EPSS, GitHub Advisories, OSINT, vector store",
+    "classify": "XGBoost ML + Claude LLM dual classification with discrepancy detection",
+    "escalate": "Human-in-the-Loop review for high-uncertainty cases (interrupt-based)",
+    "output": "Report generation — Jira tickets, PDF report, CSV/JSON exports",
+}
+"""Descriptive text for each pipeline node (UI tooltips/details)."""
+
+PIPELINE_STREAM_QUEUE_POLL_SECONDS = 1.0
+"""Polling interval for the async-to-sync streaming bridge queue (seconds)."""
+
+# Time formatting thresholds (used by dashboard components)
+SECONDS_PER_MINUTE = 60
+"""Threshold for switching from seconds to minutes display."""
+
+MILLISECONDS_THRESHOLD = 1.0
+"""Below this (seconds), display milliseconds instead."""

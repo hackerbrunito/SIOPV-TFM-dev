@@ -33,6 +33,8 @@ app = typer.Typer(
 
 # Path to the Streamlit dashboard app (Phase 7)
 STREAMLIT_APP_PATH = Path(__file__).resolve().parent.parent / "dashboard" / "app.py"
+# Path to the Streamlit pipeline monitor (Phase B)
+PIPELINE_MONITOR_PATH = Path(__file__).resolve().parent.parent / "dashboard" / "pipeline_monitor.py"
 
 
 @app.callback()
@@ -361,6 +363,35 @@ def train_model(
 
     classifier.save_model(str(output_path))
     typer.echo(f"Model saved to: {output_path}")
+
+
+@app.command()
+def pipeline_monitor() -> None:
+    """Launch the Streamlit Pipeline Monitor for real-time visualization."""
+    log = get_logger(__name__)
+    log.info("launching_pipeline_monitor")
+
+    if not PIPELINE_MONITOR_PATH.exists():
+        typer.echo(
+            f"Pipeline monitor app not found at: {PIPELINE_MONITOR_PATH}",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    typer.echo(f"Launching Pipeline Monitor: {PIPELINE_MONITOR_PATH}")
+    typer.echo("Dashboard will be available at http://localhost:8501")
+
+    try:
+        subprocess.run(
+            [sys.executable, "-m", "streamlit", "run", str(PIPELINE_MONITOR_PATH)],
+            check=True,
+        )
+    except subprocess.CalledProcessError as exc:
+        log.exception("pipeline_monitor_launch_failed", error=str(exc))
+        typer.echo(f"Failed to launch pipeline monitor: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    except KeyboardInterrupt:
+        typer.echo("\nPipeline monitor stopped.")
 
 
 @app.command()

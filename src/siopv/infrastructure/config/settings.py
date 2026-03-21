@@ -195,6 +195,9 @@ class Settings(BaseSettings):
     output_dir: Path = Path("./output")
     pdf_include_cot: bool = False
 
+    # === Pipeline Monitor (Phase B — Visual) ===
+    pipeline_monitor_stream_timeout_seconds: int = 600  # Max wait for pipeline completion
+
 
 @lru_cache
 def get_settings() -> Settings:
