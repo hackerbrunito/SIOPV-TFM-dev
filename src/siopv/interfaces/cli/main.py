@@ -190,6 +190,11 @@ def process_report(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     settings = get_settings()
+
+    # Resolve user_id and project_id: CLI flags override .env defaults
+    resolved_user_id = user_id or settings.default_user_id
+    resolved_project_id = project_id or settings.default_project_id
+
     jira_port, pdf_port, metrics_port = _build_output_ports(settings, log)
 
     ports = PipelinePorts(
@@ -218,8 +223,8 @@ def process_report(
             run_pipeline(
                 report_path=report_path,
                 ports=ports,
-                user_id=user_id,
-                project_id=project_id,
+                user_id=resolved_user_id,
+                project_id=resolved_project_id,
             )
         )
     except Exception as exc:

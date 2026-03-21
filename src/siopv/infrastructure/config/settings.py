@@ -187,6 +187,10 @@ class Settings(BaseSettings):
     webhook_host: str = "0.0.0.0"
     webhook_port: int = 8080
 
+    # === Defaults (CLI overrides) ===
+    default_user_id: str | None = None
+    default_project_id: str = "default"
+
     # === PDF Output (Phase 8) ===
     output_dir: Path = Path("./output")
     pdf_include_cot: bool = False
