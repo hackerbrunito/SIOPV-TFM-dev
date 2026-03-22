@@ -93,8 +93,10 @@ class TrivyWebhookReceiver(WebhookReceiverPort):
 
 
 async def _run_pipeline_background(payload: dict[str, Any], output_dir: Path) -> None:
-    """Run the SIOPV pipeline in a background task."""
+    """Run the SIOPV pipeline in a background task with full DI wiring."""
     from siopv.application.orchestration.graph import run_pipeline  # noqa: PLC0415
+    from siopv.infrastructure.config.settings import get_settings  # noqa: PLC0415
+    from siopv.infrastructure.di.pipeline import build_pipeline_ports  # noqa: PLC0415
 
     # Write payload to a temp file for the pipeline (expects a file path)
     with tempfile.NamedTemporaryFile(
@@ -108,8 +110,17 @@ async def _run_pipeline_background(payload: dict[str, Any], output_dir: Path) ->
         tmp_path = Path(tmp.name)
 
     try:
+        settings = get_settings()
+        ports = build_pipeline_ports(settings, output_dir=output_dir)
+
         logger.info("webhook_pipeline_started", report_path=str(tmp_path))
-        await run_pipeline(report_path=tmp_path)
+        await run_pipeline(
+            report_path=tmp_path,
+            ports=ports,
+            user_id=settings.default_user_id,
+            project_id=settings.default_project_id,
+            system_execution=True,
+        )
         logger.info("webhook_pipeline_completed", report_path=str(tmp_path))
     except Exception:
         logger.exception("webhook_pipeline_failed", report_path=str(tmp_path))

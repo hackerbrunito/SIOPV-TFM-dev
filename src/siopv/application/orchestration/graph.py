@@ -450,6 +450,7 @@ async def run_pipeline(
     thread_id: str | None = None,
     user_id: str | None = None,
     project_id: str | None = None,
+    system_execution: bool = False,
 ) -> PipelineState:
     """Run the full pipeline on a Trivy report (async).
 
@@ -475,6 +476,7 @@ async def run_pipeline(
         thread_id=thread_id or str(uuid.uuid4()),
         user_id=user_id,
         project_id=project_id,
+        system_execution=system_execution,
     )
 
     builder = PipelineGraphBuilder(ports)
