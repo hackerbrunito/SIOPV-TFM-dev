@@ -6,22 +6,26 @@ Two modes:
 2. **Manual mode** — user uploads/specifies a Trivy report and triggers
    execution directly.
 
-The observer mode uses ``@st.fragment(run_every=0.5)`` to poll the
-checkpoint database for active pipeline threads and display their
-progress in real time.
+Architecture (observer):
+  - ``st.graphviz_chart`` renders the pipeline diagram as an inline SVG.
+    Unlike iframe-based components (streamlit-flow, agraph), built-in
+    Streamlit chart elements update the existing DOM node in-place via
+    dagre-d3, avoiding destroy/recreate flicker on reruns.
+  - ``@st.fragment(run_every=2)`` runs an *invisible* poller (zero UI)
+    that only calls ``st.rerun()`` when the pipeline state actually
+    changes.  This means the diagram is rock-stable when idle.
 """
 
 from __future__ import annotations
 
+import hashlib
+import json
 import sqlite3
 from typing import Any
 
+import graphviz  # type: ignore[import-not-found]
 import streamlit as st
 import structlog
-from streamlit_flow import streamlit_flow
-from streamlit_flow.elements import StreamlitFlowEdge, StreamlitFlowNode
-from streamlit_flow.layouts import LayeredLayout
-from streamlit_flow.state import StreamlitFlowState
 
 from siopv.domain.constants import (
     PIPELINE_NODE_DESCRIPTIONS,
@@ -37,36 +41,60 @@ logger = structlog.get_logger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# Node status → visual style mapping
+# Node status → Graphviz style mapping
 # ---------------------------------------------------------------------------
 
-_STATUS_STYLES: dict[str, dict[str, str]] = {
+_GRAPHVIZ_STYLES: dict[str, dict[str, str]] = {
     "pending": {
-        "background": "#374151",
-        "border": "2px solid #6b7280",
-        "color": "#9ca3af",
+        "fillcolor": "#374151",
+        "color": "#6b7280",
+        "fontcolor": "#9ca3af",
+        "style": "filled,rounded",
     },
     "running": {
-        "background": "#1e3a5f",
-        "border": "2px solid #3b82f6",
-        "color": "#93c5fd",
+        "fillcolor": "#1e3a5f",
+        "color": "#3b82f6",
+        "fontcolor": "#93c5fd",
+        "style": "filled,rounded,bold",
     },
     "complete": {
-        "background": "#14532d",
-        "border": "2px solid #22c55e",
-        "color": "#86efac",
+        "fillcolor": "#14532d",
+        "color": "#22c55e",
+        "fontcolor": "#86efac",
+        "style": "filled,rounded",
     },
     "error": {
-        "background": "#450a0a",
-        "border": "2px solid #ef4444",
-        "color": "#fca5a5",
+        "fillcolor": "#450a0a",
+        "color": "#ef4444",
+        "fontcolor": "#fca5a5",
+        "style": "filled,rounded",
     },
     "skipped": {
-        "background": "#1f2937",
-        "border": "2px dashed #4b5563",
-        "color": "#6b7280",
+        "fillcolor": "#1f2937",
+        "color": "#4b5563",
+        "fontcolor": "#6b7280",
+        "style": "filled,rounded,dashed",
     },
 }
+
+_STATUS_ICONS: dict[str, str] = {
+    "pending": "",
+    "running": " ...",
+    "complete": " OK",
+    "error": " !",
+    "skipped": " --",
+}
+
+# Edge pairs for the pipeline graph
+_EDGE_PAIRS: list[tuple[str, str]] = [
+    ("authorize", "ingest"),
+    ("ingest", "dlp"),
+    ("dlp", "enrich"),
+    ("enrich", "classify"),
+    ("classify", "escalate"),
+    ("classify", "output"),
+    ("escalate", "output"),
+]
 
 
 def render_live_monitor() -> None:
@@ -100,55 +128,109 @@ def render_live_monitor() -> None:
 # ---------------------------------------------------------------------------
 
 
+def _build_observer_fingerprint(run: PipelineRunInfo) -> str:
+    """Build a compact hash to detect when the observer state changes."""
+    data = {
+        "tid": run.thread_id,
+        "step": run.step_count,
+        "completed": sorted(run.completed_nodes),
+        "pending": list(run.pending_nodes),
+        "running": run.is_running,
+        "interrupted": run.is_interrupted,
+    }
+    return hashlib.md5(json.dumps(data, sort_keys=True).encode()).hexdigest()
+
+
 def _render_observer_mode(graph: Any, conn: sqlite3.Connection) -> None:
-    """Render observer mode: poll checkpoint DB for active pipelines.
+    """Render observer mode with invisible polling and stable Graphviz diagram.
 
-    Uses st.fragment(run_every=0.5) for automatic polling (500ms).
+    Pattern: the ``@st.fragment(run_every=2)`` poller contains ZERO visible
+    UI elements.  It only reads SQLite and conditionally calls ``st.rerun()``
+    when the pipeline state transitions.  The Graphviz diagram is rendered
+    outside the fragment as a regular Streamlit element, so it is only
+    redrawn on actual full-page reruns (i.e. when state changes).
     """
-    flow_placeholder = st.empty()
-    detail_placeholder = st.container()
+    # ── Initial load ──────────────────────────────────────────────────
+    if "observed_run" not in st.session_state:
+        _poll_once(graph, conn)
 
-    @st.fragment(run_every=3)
-    def poll_active_pipelines() -> None:
-        active = get_active_runs(graph, conn)
+    # ── Controls ──────────────────────────────────────────────────────
+    watching = st.session_state.get("_observer_watching", False)
+    col1, col2 = st.columns([1, 4])
+    with col1:
+        if watching:
+            if st.button("Stop Auto-Refresh"):
+                st.session_state["_observer_watching"] = False
+                st.rerun()
+        elif st.button("Start Auto-Refresh", type="primary"):
+            st.session_state["_observer_watching"] = True
+            st.rerun()
+    with col2:
+        if watching:
+            st.caption("Polling every 2 seconds — diagram updates only on state changes")
+        else:
+            st.caption("Auto-refresh paused")
 
-        if not active:
-            # Check for recently completed runs
-            from siopv.interfaces.dashboard.components.observer import (  # noqa: PLC0415
-                get_completed_runs,
-            )
+    # ── Invisible poller (ZERO UI inside) ─────────────────────────────
+    if watching:
 
-            recent = get_completed_runs(graph, conn, limit=1)
-            if recent:
-                run = recent[0]
-                st.session_state["observed_run"] = run
-                with flow_placeholder.container():
-                    _render_pipeline_flow_diagram(run)
-                st.caption("Last completed pipeline run")
-            else:
-                st.info("Waiting for pipeline execution... (polling every 500ms)")
-            return
+        @st.fragment(run_every=2)
+        def _silent_poller() -> None:
+            prev_fp = st.session_state.get("_observer_fingerprint", "")
+            _poll_once(graph, conn)
+            new_fp = st.session_state.get("_observer_fingerprint", "")
+            if new_fp != prev_fp:
+                st.rerun()
 
-        # Show the most recent active run
+        _silent_poller()
+
+    # ── Render the diagram (outside the fragment — stable) ────────────
+    observed_run: PipelineRunInfo | None = st.session_state.get("observed_run")
+
+    if observed_run is None:
+        st.info("No pipeline runs found. Send a Trivy report via webhook to start.")
+        return
+
+    _render_pipeline_graphviz(observed_run)
+
+    is_active = st.session_state.get("_observer_is_active", False)
+    if is_active:
+        st.caption(
+            f"Observing thread {observed_run.thread_id[:12]}... "
+            f"| Step {observed_run.step_count} "
+            f"| {observed_run.vulnerability_count} CVEs"
+        )
+    else:
+        st.caption("Last completed pipeline run")
+
+    _render_node_detail_panel(observed_run)
+
+
+def _poll_once(graph: Any, conn: sqlite3.Connection) -> None:
+    """Single poll: check for active runs, fall back to completed."""
+    active = get_active_runs(graph, conn)
+
+    if active:
         run = active[0]
         st.session_state["observed_run"] = run
+        st.session_state["_observer_fingerprint"] = _build_observer_fingerprint(run)
+        st.session_state["_observer_is_active"] = True
+        return
 
-        with flow_placeholder.container():
-            _render_pipeline_flow_diagram(run)
+    # No active — only query completed if we don't already have one cached
+    if st.session_state.get("_observer_is_active") is False:
+        return
 
-        st.caption(
-            f"Observing thread {run.thread_id[:12]}... "
-            f"| Step {run.step_count} "
-            f"| {run.vulnerability_count} CVEs"
-        )
+    from siopv.interfaces.dashboard.components.observer import (  # noqa: PLC0415
+        get_completed_runs,
+    )
 
-    poll_active_pipelines()
-
-    # Detail panel for selected node
-    observed_run = st.session_state.get("observed_run")
-    if observed_run:
-        with detail_placeholder:
-            _render_node_detail_panel(observed_run)
+    recent = get_completed_runs(graph, conn, limit=1)
+    if recent:
+        run = recent[0]
+        st.session_state["observed_run"] = run
+        st.session_state["_observer_fingerprint"] = _build_observer_fingerprint(run)
+    st.session_state["_observer_is_active"] = False
 
 
 # ---------------------------------------------------------------------------
@@ -184,21 +266,43 @@ def _render_manual_mode() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Pipeline flow diagram (React Flow via streamlit-flow)
+# Pipeline flow diagram (Graphviz — built-in, no iframe, no flicker)
 # ---------------------------------------------------------------------------
 
 
-def _render_pipeline_flow_diagram(run: PipelineRunInfo) -> None:
-    """Render the pipeline as an interactive flow diagram using React Flow.
+def _render_pipeline_graphviz(run: PipelineRunInfo) -> None:
+    """Render the pipeline as a Graphviz directed graph.
 
-    Nodes are colored by execution status. Edges between active nodes
-    are animated to show data flow.
+    Uses ``st.graphviz_chart`` which is a built-in Streamlit element that
+    updates its SVG in-place via dagre-d3, avoiding the destroy/recreate
+    cycle that causes flickering with iframe-based custom components.
 
     Args:
         run: Current pipeline run information.
     """
-    nodes: list[StreamlitFlowNode] = []
-    edges: list[StreamlitFlowEdge] = []
+    dot = graphviz.Digraph(
+        "pipeline",
+        graph_attr={
+            "rankdir": "LR",
+            "bgcolor": "transparent",
+            "splines": "ortho",
+            "nodesep": "0.6",
+            "ranksep": "0.8",
+            "pad": "0.3",
+        },
+        node_attr={
+            "shape": "box",
+            "fontname": "Helvetica",
+            "fontsize": "11",
+            "width": "1.4",
+            "height": "0.5",
+            "penwidth": "2",
+        },
+        edge_attr={
+            "arrowsize": "0.8",
+            "penwidth": "1.5",
+        },
+    )
 
     completed = run.completed_nodes
     pending_next = set(run.pending_nodes)
@@ -210,88 +314,24 @@ def _render_pipeline_flow_diagram(run: PipelineRunInfo) -> None:
         elif node_name in pending_next or (run.is_interrupted and node_name == "escalate"):
             status = "running"
         else:
-            # Check if any later node completed (this one was skipped)
             later_nodes = set(PIPELINE_NODE_SEQUENCE[i + 1 :])
             status = "skipped" if later_nodes & completed else "pending"
 
-        style = _STATUS_STYLES[status]
-        label = PIPELINE_NODE_LABELS[node_name]
-        status_icon = {
-            "pending": "",
-            "running": " ...",
-            "complete": " OK",
-            "error": " !",
-            "skipped": " --",
-        }[status]
+        gv_style = _GRAPHVIZ_STYLES[status]
+        label = PIPELINE_NODE_LABELS[node_name] + _STATUS_ICONS[status]
 
-        nodes.append(
-            StreamlitFlowNode(
-                id=node_name,
-                pos=(0, 0),
-                data={"content": f"**{label}**{status_icon}"},
-                node_type="default",
-                source_position="right",
-                target_position="left",
-                style={
-                    "backgroundColor": style["background"],
-                    "border": style["border"],
-                    "color": style["color"],
-                    "padding": "10px",
-                    "borderRadius": "8px",
-                    "fontSize": "14px",
-                    "width": "140px",
-                    "textAlign": "center",
-                },
-            )
+        dot.node(node_name, label, **gv_style)
+
+    for source, target in _EDGE_PAIRS:
+        is_active = source in completed and (target in pending_next or target in completed)
+        dot.edge(
+            source,
+            target,
+            color="#3b82f6" if is_active else "#4b5563",
+            penwidth="2.5" if is_active else "1.0",
         )
 
-    # Create edges between sequential nodes
-    edge_pairs = [
-        ("authorize", "ingest"),
-        ("ingest", "dlp"),
-        ("dlp", "enrich"),
-        ("enrich", "classify"),
-        ("classify", "escalate"),
-        ("classify", "output"),
-        ("escalate", "output"),
-    ]
-
-    for source, target in edge_pairs:
-        # Animate edges where data is currently flowing
-        is_animated = source in completed and (target in pending_next or target in completed)
-
-        edges.append(
-            StreamlitFlowEdge(
-                id=f"{source}-{target}",
-                source=source,
-                target=target,
-                animated=is_animated,
-                style={"stroke": "#3b82f6" if is_animated else "#4b5563"},
-            )
-        )
-
-    flow_state = StreamlitFlowState(nodes, edges)
-
-    selected = streamlit_flow(
-        "pipeline_flow",
-        flow_state,
-        layout=LayeredLayout(direction="right"),
-        fit_view=True,
-        height=250,
-        get_node_on_click=True,
-        get_edge_on_click=False,
-        pan_on_drag=True,
-        allow_zoom=True,
-        show_minimap=False,
-        show_controls=False,
-        style={"backgroundColor": "#0e1117"},
-    )
-
-    if selected and hasattr(selected, "nodes"):
-        # User clicked a node — store selection for detail panel
-        clicked_nodes = [n for n in selected.nodes if hasattr(n, "id")]
-        if clicked_nodes:
-            st.session_state["selected_flow_node"] = clicked_nodes[0].id
+    st.graphviz_chart(dot)
 
 
 # ---------------------------------------------------------------------------
@@ -310,7 +350,13 @@ def _render_node_detail_panel(run: PipelineRunInfo) -> None:
     selected_node = st.session_state.get("selected_flow_node")
 
     if selected_node is None:
-        st.caption("Click on a pipeline node above to see details.")
+        # Show a summary instead of "click a node"
+        st.markdown("---")
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Vulnerabilities", run.vulnerability_count)
+        col2.metric("Classified", run.classification_count)
+        col3.metric("Escalated", run.escalated_count)
+        col4.metric("Errors", run.error_count)
         return
 
     if selected_node not in PIPELINE_NODE_LABELS:
@@ -336,14 +382,7 @@ def _render_node_detail_panel(run: PipelineRunInfo) -> None:
 
 
 def _render_node_data(node_name: str, state: dict[str, Any]) -> None:
-    """Render node-specific data from the pipeline state.
-
-    Uses a dispatch table to keep branch count under the linter limit.
-
-    Args:
-        node_name: Pipeline node name.
-        state: Pipeline accumulated state.
-    """
+    """Render node-specific data from the pipeline state."""
     renderer = _NODE_DATA_RENDERERS.get(node_name)
     if renderer is not None:
         renderer(state)

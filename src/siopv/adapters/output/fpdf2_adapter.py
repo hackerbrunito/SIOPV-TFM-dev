@@ -47,6 +47,30 @@ _COLOR_MID_GRAY = (140, 140, 140)
 _COLOR_LIGHT_GRAY = (220, 220, 220)
 _COLOR_WHITE = (255, 255, 255)
 
+# Unicode → latin-1 replacement map for fpdf2 core fonts (Helvetica)
+_UNICODE_REPLACEMENTS: dict[str, str] = {
+    "\u2011": "-",  # non-breaking hyphen → hyphen-minus
+    "\u2010": "-",  # hyphen
+    "\u2013": "-",  # en dash
+    "\u2014": "-",  # em dash
+    "\u2018": "'",  # left single quote
+    "\u2019": "'",  # right single quote
+    "\u201c": '"',  # left double quote
+    "\u201d": '"',  # right double quote
+    "\u2026": "...",  # ellipsis
+    "\u00a0": " ",  # non-breaking space
+    "\u200b": "",  # zero-width space
+}
+
+
+def _sanitize_for_latin1(text: str) -> str:
+    """Replace common Unicode characters that fall outside latin-1 for fpdf2 core fonts."""
+    for char, replacement in _UNICODE_REPLACEMENTS.items():
+        text = text.replace(char, replacement)
+    # Final fallback: drop any remaining non-latin-1 characters
+    return text.encode("latin-1", errors="replace").decode("latin-1")
+
+
 # Severity display order
 _SEVERITY_ORDER = ("CRITICAL", "HIGH", "MEDIUM", "LOW", "UNKNOWN")
 
@@ -491,7 +515,13 @@ class Fpdf2Adapter(PdfGeneratorPort):
             description = enrichment.nvd.description
         pdf.body_font()
         if description:
-            pdf.multi_cell(0, _LINE_HEIGHT_MM, description[:500], new_x="LMARGIN", new_y="NEXT")
+            pdf.multi_cell(
+                0,
+                _LINE_HEIGHT_MM,
+                _sanitize_for_latin1(description[:500]),
+                new_x="LMARGIN",
+                new_y="NEXT",
+            )
             pdf.ln(1)
 
     @staticmethod

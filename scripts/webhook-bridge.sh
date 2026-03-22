@@ -6,7 +6,7 @@
 #
 # Arguments:
 #   trivy-report.json   Path to the Trivy JSON report file (required)
-#   webhook-url         Webhook URL (default: http://localhost:8080/api/v1/webhook/trivy)
+#   webhook-url         Webhook URL (default: http://localhost:8090/api/v1/webhook/trivy)
 #   secret              HMAC-SHA256 shared secret (default: $SIOPV_WEBHOOK_SECRET env var)
 #
 # Environment variables:
@@ -20,7 +20,7 @@
 set -euo pipefail
 
 REPORT_FILE="${1:-}"
-WEBHOOK_URL="${2:-http://localhost:8080/api/v1/webhook/trivy}"
+WEBHOOK_URL="${2:-http://localhost:8090/api/v1/webhook/trivy}"
 SECRET="${3:-${SIOPV_WEBHOOK_SECRET:-}}"
 
 if [[ -z "$REPORT_FILE" ]]; then
@@ -33,12 +33,10 @@ if [[ ! -f "$REPORT_FILE" ]]; then
     exit 1
 fi
 
-PAYLOAD=$(cat "$REPORT_FILE")
-
 # Build signature header if secret is provided
 HEADERS=(-H "Content-Type: application/json")
 if [[ -n "$SECRET" ]]; then
-    SIGNATURE=$(printf '%s' "$PAYLOAD" | openssl dgst -sha256 -hmac "$SECRET" | sed 's/^.* //')
+    SIGNATURE=$(openssl dgst -sha256 -hmac "$SECRET" < "$REPORT_FILE" | sed 's/^.* //')
     HEADERS+=(-H "X-Webhook-Signature-256: sha256=${SIGNATURE}")
     echo "Sending with HMAC-SHA256 signature..."
 else
@@ -50,7 +48,7 @@ echo "Sending ${REPORT_FILE} to ${WEBHOOK_URL}..."
 HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
     -X POST \
     "${HEADERS[@]}" \
-    -d "$PAYLOAD" \
+    --data-binary "@${REPORT_FILE}" \
     "$WEBHOOK_URL")
 
 echo "Response: HTTP ${HTTP_CODE}"

@@ -13,6 +13,7 @@ import structlog
 
 from siopv.adapters.external_apis.trivy_parser import TrivyParser
 from siopv.adapters.ml.xgboost_classifier import XGBoostClassifier
+from siopv.application.ports.feature_engineering import FeatureEngineerPort
 from siopv.application.ports.ml_classifier import MLClassifierPort
 from siopv.application.ports.parsing import TrivyParserPort
 
@@ -57,7 +58,7 @@ def build_classifier(settings: Settings) -> MLClassifierPort | None:
     return adapter
 
 
-def build_feature_engineer() -> object:
+def build_feature_engineer() -> FeatureEngineerPort:
     """Create a FeatureEngineer adapter instance.
 
     Returns:

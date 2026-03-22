@@ -93,21 +93,27 @@ def discover_pipeline_threads(
     Returns:
         List of thread_id strings, most recent first.
     """
-    # Force a fresh read — cached connections in WAL mode may hold
-    # stale read snapshots. COMMIT closes any implicit transaction
-    # so the next SELECT sees the latest writes from other processes.
+    # WAL mode: the shared connection may hold a stale read snapshot.
+    # Wrapping in BEGIN/COMMIT ensures we get a fresh snapshot of the
+    # latest writes from other processes.
     import contextlib  # noqa: PLC0415
 
     with contextlib.suppress(Exception):
-        conn.execute("COMMIT")
+        conn.execute("BEGIN")
 
-    cursor = conn.execute(
-        "SELECT thread_id FROM checkpoints "
-        "WHERE checkpoint_ns = '' "
-        "GROUP BY thread_id "
-        "ORDER BY MAX(rowid) DESC"
-    )
-    return [row[0] for row in cursor.fetchall()]
+    try:
+        cursor = conn.execute(
+            "SELECT thread_id FROM checkpoints "
+            "WHERE checkpoint_ns = '' "
+            "GROUP BY thread_id "
+            "ORDER BY MAX(rowid) DESC"
+        )
+        rows = cursor.fetchall()
+    finally:
+        with contextlib.suppress(Exception):
+            conn.execute("COMMIT")
+
+    return [row[0] for row in rows if row]
 
 
 def get_pipeline_run_info(
@@ -147,9 +153,15 @@ def get_pipeline_run_info(
     # Determine completed nodes from state history
     completed = _extract_completed_nodes(graph, config)
 
-    # Check if pipeline is still running (has pending nodes)
+    # Check if pipeline is still running (has pending nodes).
+    # Between node transitions, snapshot.next is briefly empty even though
+    # the pipeline hasn't finished.  Treat a run as still active if the
+    # terminal "output" node hasn't completed yet.
     pending = snapshot.next or ()
     is_running = len(pending) > 0
+    if not is_running and "output" not in completed:
+        # Mid-transition gap — the pipeline hasn't finished yet
+        is_running = True
 
     # Check for HITL interrupts
     is_interrupted = False
