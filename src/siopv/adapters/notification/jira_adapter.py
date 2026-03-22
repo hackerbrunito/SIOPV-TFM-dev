@@ -356,6 +356,11 @@ class JiraAdapter(JiraClientPort):
             "siopv",
             severity.lower(),
         ]
+        # Flag CVEs where ML and CRAG LLM disagreed on classification
+        if vulnerability_data.get("needs_human_review"):
+            labels.append("needs-human-review")
+            labels.append("ml-llm-discrepancy")
+
         affected_component = vulnerability_data.get("affected_component")
         if affected_component:
             labels.append(affected_component)

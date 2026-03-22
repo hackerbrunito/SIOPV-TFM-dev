@@ -1,7 +1,7 @@
 """Escalate node for LangGraph pipeline.
 
 Handles escalation of uncertain classifications to human review.
-Phase 4 logic (candidate identification) + Phase 7 HITL interrupt.
+Phase 4 logic (candidate identification) + Phase 7 HITL flagging.
 """
 
 from __future__ import annotations
@@ -10,7 +10,6 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 import structlog
-from langgraph.types import interrupt
 
 from siopv.application.orchestration.state import (
     get_classifications,
@@ -73,16 +72,16 @@ def escalate_node(
     review_deadline_hours: float | None = None,
     threshold_config: ThresholdConfig | None = None,
 ) -> dict[str, object]:
-    """Execute escalation phase as a LangGraph node with HITL interrupt.
+    """Execute escalation phase — flag uncertain CVEs for human review.
 
-    This node handles CVEs that require human review due to:
+    This node identifies CVEs that require human review due to:
     - High discrepancy between ML and LLM scores
     - Low LLM confidence
     - Adaptive threshold exceeded
 
-    When candidates are found, ``interrupt()`` pauses execution until a human
-    submits a decision via the Streamlit dashboard.  On resume the node
-    re-executes from the top (pre-interrupt logic is idempotent).
+    Flagged CVEs are tagged in the state (``escalated_cves`` list).
+    The pipeline continues without interruption — the output node adds
+    a NEEDS-HUMAN-REVIEW label to Jira tickets for flagged CVEs.
 
     Args:
         state: Current pipeline state with classifications and llm_confidence
@@ -141,43 +140,13 @@ def escalate_node(
             "current_node": "escalate",
         }
 
-    # --- Candidates found: prepare escalation data and interrupt ---
-    if review_deadline_hours is None:
-        msg = "review_deadline_hours must be provided (injected via EscalationConfig)"
-        raise ValueError(msg)
-
+    # --- Candidates found: tag for review and continue (no interrupt) ---
     now = datetime.now(UTC)
     escalation_timestamp = now.isoformat()
-    review_deadline = (now + timedelta(hours=review_deadline_hours)).isoformat()
-
-    # Build interrupt payload (must be JSON-serializable)
-    escalation_data: dict[str, object] = {
-        "escalated_cves": escalated,
-        "escalation_timestamp": escalation_timestamp,
-        "review_deadline": review_deadline,
-        "summary": _build_escalation_summary(escalated, classifications, llm_confidence),
-    }
-
-    logger.info(
-        "escalate_node_interrupting",
-        escalated_count=len(escalated),
-        total_classifications=len(classifications),
-        escalation_rate=f"{len(escalated) / len(classifications) * 100:.1f}%",
-    )
-
-    # Pause execution — human resumes via dashboard
-    # NEVER wrap interrupt() in try/except; it uses internal exceptions
-    human_response = interrupt(escalation_data)
-
-    # --- Post-interrupt: process human decision ---
-    decision = (
-        human_response.get("decision", "approve") if isinstance(human_response, dict) else "approve"
-    )
-    modified_score = (
-        human_response.get("modified_score") if isinstance(human_response, dict) else None
-    )
-    modified_recommendation = (
-        human_response.get("modified_recommendation") if isinstance(human_response, dict) else None
+    review_deadline = (
+        (now + timedelta(hours=review_deadline_hours)).isoformat()
+        if review_deadline_hours is not None
+        else None
     )
 
     escalation_level = _calculate_escalation_level(
@@ -185,21 +154,24 @@ def escalate_node(
     )
 
     logger.info(
-        "escalate_node_complete",
+        "escalate_node_flagged_for_review",
         escalated_count=len(escalated),
-        human_decision=decision,
-        escalation_level=escalation_level,
         total_classifications=len(classifications),
+        escalation_rate=f"{len(escalated) / len(classifications) * 100:.1f}%",
+        escalation_level=escalation_level,
     )
 
+    # Pipeline continues — flagged CVEs get a NEEDS-HUMAN-REVIEW label
+    # in the output node (Jira tickets, PDF report).
+    # No interrupt() — the CI/CD pipeline is never blocked.
     return {
         "escalated_cves": escalated,
         "escalation_required": True,
         "escalation_timestamp": escalation_timestamp,
         "review_deadline": review_deadline,
-        "human_decision": decision,
-        "human_modified_score": modified_score,
-        "human_modified_recommendation": modified_recommendation,
+        "human_decision": None,
+        "human_modified_score": None,
+        "human_modified_recommendation": None,
         "escalation_level": escalation_level,
         "current_node": "escalate",
     }

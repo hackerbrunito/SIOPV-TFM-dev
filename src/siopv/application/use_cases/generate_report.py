@@ -149,6 +149,7 @@ class GenerateReportUseCase:
                 vulnerabilities[v.cve_id.value] = v
         enrichments = state.get("enrichments", {})
         llm_confidence = state.get("llm_confidence", {})
+        escalated_cves: set[str] = set(state.get("escalated_cves", []))
         pdf_path = state.get("output_pdf_path")
 
         for cve_id, classification in classifications.items():
@@ -172,6 +173,9 @@ class GenerateReportUseCase:
                     llm_conf=llm_confidence.get(cve_id),
                     pdf_path=pdf_path,
                 )
+                # Flag CVEs where ML and LLM disagree for human review
+                if cve_id in escalated_cves:
+                    vulnerability_data["needs_human_review"] = True
                 ticket_key = await self._jira.create_ticket(vulnerability_data)
                 keys.append(ticket_key)
                 logger.info(
