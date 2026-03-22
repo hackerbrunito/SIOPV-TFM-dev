@@ -79,20 +79,22 @@ class _HaikuDLPAdapter:
         api_key: str,
         model: str,
         *,
+        base_url: str | None = None,
         max_tokens: int = 512,
         max_text_length: int = MAX_TEXT_LENGTH,
     ) -> None:
         """Initialize with Anthropic API credentials.
 
         Args:
-            api_key: Anthropic API key.
+            api_key: Anthropic API key (use "ollama" for local models).
             model: Claude model identifier (e.g. from settings.claude_haiku_model).
+            base_url: Optional base URL for Ollama (http://localhost:11434).
             max_tokens: Maximum tokens for Haiku DLP response.
             max_text_length: Maximum text length before truncation
                 (from settings.haiku_max_text_length).
         """
 
-        self._client = create_haiku_client(api_key)
+        self._client = create_haiku_client(api_key, base_url=base_url)
         self._model = model
         self._max_tokens = max_tokens
         self._max_text_length = max_text_length
@@ -320,6 +322,7 @@ def create_dual_layer_adapter(
     api_key: str,
     *,
     haiku_model: str,
+    base_url: str | None = None,
     haiku_max_tokens: int = 512,
     max_text_length: int = MAX_TEXT_LENGTH,
 ) -> DualLayerDLPAdapter:
@@ -352,6 +355,7 @@ def create_dual_layer_adapter(
     haiku = _HaikuDLPAdapter(
         api_key=api_key,
         model=haiku_model,
+        base_url=base_url,
         max_tokens=haiku_max_tokens,
         max_text_length=max_text_length,
     )

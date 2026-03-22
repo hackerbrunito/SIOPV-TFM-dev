@@ -136,11 +136,12 @@ class AnthropicAnalysisAdapter(LLMAnalysisPort):
         sonnet_model: str,
         haiku_model: str,
         *,
+        base_url: str | None = None,
         max_context_length: int,
         analysis_max_tokens: int,
         confidence_max_tokens: int,
     ) -> None:
-        self._client = create_haiku_client(api_key)
+        self._client = create_haiku_client(api_key, base_url=base_url)
         self._sonnet_model = sonnet_model
         self._haiku_model = haiku_model
         self._max_context_length = max_context_length

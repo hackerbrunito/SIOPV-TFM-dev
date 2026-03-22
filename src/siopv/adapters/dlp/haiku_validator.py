@@ -64,6 +64,7 @@ class HaikuSemanticValidatorAdapter:
         api_key: str,
         model: str,
         *,
+        base_url: str | None = None,
         validation_max_tokens: int = 10,
         min_short_text_length: int = MIN_SHORT_TEXT_LENGTH,
         max_text_length: int = MAX_TEXT_LENGTH,
@@ -71,15 +72,16 @@ class HaikuSemanticValidatorAdapter:
         """Initialise the adapter.
 
         Args:
-            api_key: Anthropic API key.
+            api_key: Anthropic API key (use "ollama" for local models).
             model: Claude model identifier (e.g. from settings.claude_haiku_model).
+            base_url: Optional base URL for Ollama (http://localhost:11434).
             validation_max_tokens: Maximum tokens for validation response.
             min_short_text_length: Texts shorter than this with no detections
                 are short-circuited to safe.
             max_text_length: Maximum text length before truncation
                 (from settings.haiku_max_text_length).
         """
-        self._client = create_haiku_client(api_key)
+        self._client = create_haiku_client(api_key, base_url=base_url)
         self._model = model
         self._validation_max_tokens = validation_max_tokens
         self._min_short_text_length = min_short_text_length

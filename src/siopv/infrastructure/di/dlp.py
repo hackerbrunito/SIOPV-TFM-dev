@@ -110,6 +110,7 @@ def create_dual_layer_dlp_adapter() -> DualLayerDLPAdapter:
     adapter = create_dual_layer_adapter(
         api_key,
         haiku_model=haiku_model,
+        base_url=settings.anthropic_base_url,
         haiku_max_tokens=settings.haiku_max_tokens,
         max_text_length=settings.haiku_max_text_length,
     )

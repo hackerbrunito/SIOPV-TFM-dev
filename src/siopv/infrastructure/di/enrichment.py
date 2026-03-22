@@ -142,6 +142,7 @@ def build_llm_analysis(settings: Settings) -> LLMAnalysisPort | None:
         api_key=api_key,
         sonnet_model=settings.claude_sonnet_model,
         haiku_model=settings.claude_haiku_model,
+        base_url=settings.anthropic_base_url,
         max_context_length=settings.llm_max_context_length,
         analysis_max_tokens=settings.llm_analysis_max_tokens,
         confidence_max_tokens=settings.llm_confidence_max_tokens,

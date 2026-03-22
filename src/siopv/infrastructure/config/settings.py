@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
 
     # === Anthropic (Claude) ===
+    anthropic_base_url: str | None = None  # Set to http://localhost:11434 for Ollama
     anthropic_api_key: SecretStr = Field(default=...)
     claude_haiku_model: str = "claude-haiku-4-5-20251001"
     claude_sonnet_model: str = "claude-sonnet-4-6"

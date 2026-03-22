@@ -18,8 +18,19 @@ from anthropic.types import Message, TextBlock
 MAX_TEXT_LENGTH: int = 4_000
 
 
-def create_haiku_client(api_key: str) -> anthropic.Anthropic:
-    """Create a synchronous Anthropic client for Haiku API calls."""
+def create_haiku_client(
+    api_key: str,
+    base_url: str | None = None,
+) -> anthropic.Anthropic:
+    """Create a synchronous Anthropic client for API calls.
+
+    Args:
+        api_key: API key (use "ollama" for local Ollama).
+        base_url: Optional base URL override. Set to
+            ``http://localhost:11434`` for Ollama local models.
+    """
+    if base_url:
+        return anthropic.Anthropic(api_key=api_key, base_url=base_url)
     return anthropic.Anthropic(api_key=api_key)
 
 
