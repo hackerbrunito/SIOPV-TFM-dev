@@ -94,9 +94,10 @@ def discover_pipeline_threads(
         List of thread_id strings, most recent first.
     """
     cursor = conn.execute(
-        "SELECT DISTINCT thread_id FROM checkpoints "
+        "SELECT thread_id FROM checkpoints "
         "WHERE checkpoint_ns = '' "
-        "ORDER BY thread_id DESC"
+        "GROUP BY thread_id "
+        "ORDER BY MAX(rowid) DESC"
     )
     return [row[0] for row in cursor.fetchall()]
 
