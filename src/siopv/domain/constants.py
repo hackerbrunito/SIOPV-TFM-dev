@@ -76,3 +76,6 @@ SECONDS_PER_MINUTE = 60
 
 MILLISECONDS_THRESHOLD = 1.0
 """Below this (seconds), display milliseconds instead."""
+
+MIN_SCANS_FOR_COMPARISON = 2
+"""Minimum number of completed scans required for comparison view."""

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Any
 
-import pandas as pd  # type: ignore[import-untyped]
+import pandas as pd
 import streamlit as st
 
 

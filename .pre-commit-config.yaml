@@ -47,4 +47,6 @@ repos:
           # Anthropic / Auth
           - anthropic>=0.40.0
           - PyJWT>=2.8.0
+          # Dashboard visualization
+          - pandas-stubs>=2.0.0
         files: ^src/

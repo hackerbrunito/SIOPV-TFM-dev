@@ -3185,6 +3185,19 @@ wheels = [
 ]
 
 [[package]]
+name = "plotly"
+version = "6.6.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "narwhals" },
+    { name = "packaging" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/24/fb/41efe84970cfddefd4ccf025e2cbfafe780004555f583e93dba3dac2cdef/plotly-6.6.0.tar.gz", hash = "sha256:b897f15f3b02028d69f755f236be890ba950d0a42d7dfc619b44e2d8cea8748c", size = 7027956, upload-time = "2026-03-02T21:10:25.321Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/52/d2/c6e44dba74f17c6216ce1b56044a9b93a929f1c2d5bdaff892512b260f5e/plotly-6.6.0-py3-none-any.whl", hash = "sha256:8d6daf0f87412e0c0bfe72e809d615217ab57cc715899a1e5145135a7800d1d0", size = 9910315, upload-time = "2026-03-02T21:10:18.131Z" },
+]
+
+[[package]]
 name = "pluggy"
 version = "1.6.0"
 source = { registry = "https://pypi.org/simple" }
@@ -4628,6 +4641,7 @@ dependencies = [
     { name = "optuna" },
     { name = "orjson" },
     { name = "pillow" },
+    { name = "plotly" },
     { name = "presidio-analyzer" },
     { name = "presidio-anonymizer" },
     { name = "protobuf" },
@@ -4642,6 +4656,7 @@ dependencies = [
     { name = "spacy" },
     { name = "sqlalchemy" },
     { name = "streamlit" },
+    { name = "streamlit-flow-component" },
     { name = "structlog" },
     { name = "tenacity" },
     { name = "tornado" },
@@ -4683,6 +4698,7 @@ requires-dist = [
     { name = "optuna", specifier = ">=3.5.0" },
     { name = "orjson", specifier = ">=3.11.6" },
     { name = "pillow", specifier = ">=12.1.1" },
+    { name = "plotly", specifier = ">=6.0.0" },
     { name = "pre-commit", marker = "extra == 'dev'", specifier = ">=3.6.0" },
     { name = "presidio-analyzer", specifier = ">=2.2.0" },
     { name = "presidio-anonymizer", specifier = ">=2.2.0" },
@@ -4704,6 +4720,7 @@ requires-dist = [
     { name = "spacy", specifier = ">=3.7.0" },
     { name = "sqlalchemy", specifier = ">=2.0.0" },
     { name = "streamlit", specifier = ">=1.40.0" },
+    { name = "streamlit-flow-component", specifier = ">=1.6.1,<2.0" },
     { name = "structlog", specifier = ">=24.0.0" },
     { name = "tenacity", specifier = ">=8.2.0" },
     { name = "tornado", specifier = ">=6.5.5" },
@@ -4998,6 +5015,18 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/31/cc/347730d06e3950e426bf2ee06eaf9b281e18387bffa82bd69aa0f281eee3/streamlit-1.53.1.tar.gz", hash = "sha256:ae656af3b68b4bb2d669fa977606096f2021bcbaa14a454a290f8e0a37bab277", size = 8650843, upload-time = "2026-01-22T21:39:04.087Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/23/c3/5e6f6a9328d57436b658447b6f05969d435df8d31344e34ec75c3044657b/streamlit-1.53.1-py3-none-any.whl", hash = "sha256:9534d151feea485b69200dd36448f95f418c511e8c81186ceb57133bdf1443f7", size = 9111505, upload-time = "2026-01-22T21:39:01.344Z" },
+]
+
+[[package]]
+name = "streamlit-flow-component"
+version = "1.6.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "streamlit" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/6f/96/67e4d8843debfdbb73ba6a66548e23f3296e0c6c990c65cb37698a94f856/streamlit-flow-component-1.6.1.tar.gz", hash = "sha256:16998d94731f494358d3ce03a73795e127c39fcefa0662666f524bd017493388", size = 2073059, upload-time = "2025-02-28T00:53:17.03Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a0/54/ae94d63815d7bbfd71d7406b43c56b7d666a2dd24702b50ddfdde9b0c724/streamlit_flow_component-1.6.1-py3-none-any.whl", hash = "sha256:1664fc081bf343443e4aca17942434a72808d59e4f55c19d520caa19779bf538", size = 2092632, upload-time = "2025-02-28T00:53:13.318Z" },
 ]
 
 [[package]]

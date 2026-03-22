@@ -35,6 +35,8 @@ app = typer.Typer(
 STREAMLIT_APP_PATH = Path(__file__).resolve().parent.parent / "dashboard" / "app.py"
 # Path to the Streamlit pipeline monitor (Phase B)
 PIPELINE_MONITOR_PATH = Path(__file__).resolve().parent.parent / "dashboard" / "pipeline_monitor.py"
+# Path to the Streamlit analytics dashboard (Phase B — multi-page)
+ANALYTICS_APP_PATH = Path(__file__).resolve().parent.parent / "dashboard" / "analytics_app.py"
 
 
 @app.callback()
@@ -392,6 +394,35 @@ def pipeline_monitor() -> None:
         raise typer.Exit(code=1) from exc
     except KeyboardInterrupt:
         typer.echo("\nPipeline monitor stopped.")
+
+
+@app.command()
+def analytics() -> None:
+    """Launch the Security Analytics Dashboard (multi-page)."""
+    log = get_logger(__name__)
+    log.info("launching_analytics_dashboard")
+
+    if not ANALYTICS_APP_PATH.exists():
+        typer.echo(
+            f"Analytics app not found at: {ANALYTICS_APP_PATH}",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    typer.echo(f"Launching Security Analytics: {ANALYTICS_APP_PATH}")
+    typer.echo("Dashboard will be available at http://localhost:8501")
+
+    try:
+        subprocess.run(
+            [sys.executable, "-m", "streamlit", "run", str(ANALYTICS_APP_PATH)],
+            check=True,
+        )
+    except subprocess.CalledProcessError as exc:
+        log.exception("analytics_launch_failed", error=str(exc))
+        typer.echo(f"Failed to launch analytics dashboard: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    except KeyboardInterrupt:
+        typer.echo("\nAnalytics dashboard stopped.")
 
 
 @app.command()

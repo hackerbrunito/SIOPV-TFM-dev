@@ -50,6 +50,8 @@ dependencies = [
     # CLI & Dashboard
     "typer[all]>=0.12.0",
     "streamlit>=1.40.0",
+    "plotly>=6.0.0",
+    "streamlit-flow-component>=1.6.1,<2.0",
     "pillow>=12.1.1",
     "rich>=13.0.0",
     # Reports
@@ -173,6 +175,8 @@ module = [
     "sklearn.*",
     "spacy.*",
     "streamlit.*",
+    "streamlit_flow.*",
+    "plotly.*",
     "uvicorn.*",
 ]
 ignore_missing_imports = true
