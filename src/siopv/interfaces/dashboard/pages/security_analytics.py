@@ -209,20 +209,20 @@ def _render_vulnerability_table(state: dict[str, Any]) -> None:
         if not cve_id:
             continue
 
-        # Get CVSS
-        cvss = _get_float_attr(vuln, "cvss_score", "cvss_base_score")
+        # Get CVSS (field is cvss_v3_score, a CVSSScore value object with .value)
+        cvss = _get_float_attr(vuln, "cvss_v3_score", "cvss_score", "cvss_base_score")
 
         # Get package info
         package = _get_str_attr(vuln, "package_name", "pkg_name")
         severity_trivy = _get_str_attr(vuln, "severity")
 
-        # Get enrichment data
+        # Get enrichment data — EPSS is nested: enrichment.epss.score
         enrichment = enrichments.get(cve_id)
-        epss = _get_float_from(enrichment, "epss_score") if enrichment else None
+        epss = _get_float_from(enrichment, "epss") if enrichment else None
 
-        # Get classification
+        # Get classification — ClassificationResult.risk_score.risk_probability
         classification = classifications.get(cve_id)
-        risk_prob = _get_float_from(classification, "risk_probability") if classification else None
+        risk_prob = _extract_risk_probability(classification) if classification else None
 
         # Determine ML severity
         ml_severity = _severity_label(risk_prob) if risk_prob is not None else "N/A"
@@ -309,11 +309,21 @@ def _get_cve_id(vuln: Any) -> str:
 
 
 def _get_float_attr(obj: Any, *attrs: str) -> float | None:
-    """Try to get a float value from multiple attribute names."""
+    """Try to get a float value from multiple attribute names.
+
+    Handles Pydantic value objects (CVSSScore, etc.) that wrap
+    a float in a ``.value`` attribute.
+    """
     for attr in attrs:
         val = obj.get(attr) if isinstance(obj, dict) else getattr(obj, attr, None)
-        if val is not None and isinstance(val, (int, float)):
+        if val is None:
+            continue
+        if isinstance(val, (int, float)):
             return float(val)
+        # Pydantic value objects (CVSSScore, PackageVersion, etc.)
+        inner = getattr(val, "value", None)
+        if inner is not None and isinstance(inner, (int, float)):
+            return float(inner)
     return None
 
 
@@ -327,12 +337,40 @@ def _get_str_attr(obj: Any, *attrs: str) -> str | None:
 
 
 def _get_float_from(obj: Any, attr: str) -> float | None:
-    """Get a float value from an object or dict."""
+    """Get a float value from an object or dict.
+
+    Handles nested Pydantic objects — e.g. enrichment.epss.score.
+    """
     if obj is None:
         return None
     val = obj.get(attr) if isinstance(obj, dict) else getattr(obj, attr, None)
-    if val is not None and isinstance(val, (int, float)):
+    if val is None:
+        return None
+    if isinstance(val, (int, float)):
         return float(val)
+    # Nested object — try .score (EPSSScore) or .value (CVSSScore)
+    for inner_attr in ("score", "value"):
+        inner = getattr(val, inner_attr, None)
+        if inner is not None and isinstance(inner, (int, float)):
+            return float(inner)
+    return None
+
+
+def _extract_risk_probability(classification: Any) -> float | None:
+    """Extract risk_probability from ClassificationResult or dict."""
+    if classification is None:
+        return None
+    if isinstance(classification, dict):
+        val = classification.get("risk_probability")
+        if val is not None and isinstance(val, (int, float)):
+            return float(val)
+        return None
+    # ClassificationResult → risk_score → risk_probability
+    risk_score = getattr(classification, "risk_score", None)
+    if risk_score is not None:
+        prob = getattr(risk_score, "risk_probability", None)
+        if prob is not None:
+            return float(prob)
     return None
 
 

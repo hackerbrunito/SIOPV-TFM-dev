@@ -226,11 +226,21 @@ def render_risk_treemap(classifications: dict[str, Any]) -> None:
 
 
 def _get_risk_prob(classification: Any) -> float:
-    """Extract risk probability from a classification."""
+    """Extract risk probability from a classification.
+
+    Handles ClassificationResult (risk_score.risk_probability)
+    and dict representations.
+    """
     if classification is None:
         return 0.0
     if isinstance(classification, dict):
         return float(classification.get("risk_probability", 0.0) or 0.0)
+    # ClassificationResult -> risk_score -> risk_probability
+    risk_score = getattr(classification, "risk_score", None)
+    if risk_score is not None:
+        prob = getattr(risk_score, "risk_probability", None)
+        if prob is not None:
+            return float(prob)
     return float(getattr(classification, "risk_probability", 0.0) or 0.0)
 
 

@@ -229,12 +229,9 @@ def _extract_cvss_scores(vulnerabilities: list[Any]) -> list[float]:
     """Extract CVSS base scores from vulnerability records."""
     scores: list[float] = []
     for vuln in vulnerabilities:
-        if isinstance(vuln, dict):
-            score = vuln.get("cvss_score") or vuln.get("cvss_base_score")
-        else:
-            score = getattr(vuln, "cvss_score", None) or getattr(vuln, "cvss_base_score", None)
-        if score is not None and isinstance(score, (int, float)):
-            scores.append(float(score))
+        score = _get_cvss(vuln)
+        if score is not None:
+            scores.append(score)
     return scores
 
 
@@ -293,33 +290,61 @@ def _get_cve_id(vuln: Any) -> str:
 
 
 def _get_cvss(vuln: Any) -> float | None:
-    """Extract CVSS score from a vulnerability record."""
-    if isinstance(vuln, dict):
-        val = vuln.get("cvss_score") or vuln.get("cvss_base_score")
-    else:
-        val = getattr(vuln, "cvss_score", None) or getattr(vuln, "cvss_base_score", None)
-    if val is not None and isinstance(val, (int, float)):
-        return float(val)
+    """Extract CVSS score from a vulnerability record.
+
+    Handles Pydantic CVSSScore value objects (with .value attribute).
+    """
+    for attr in ("cvss_v3_score", "cvss_score", "cvss_base_score"):
+        val = vuln.get(attr) if isinstance(vuln, dict) else getattr(vuln, attr, None)
+        if val is None:
+            continue
+        if isinstance(val, (int, float)):
+            return float(val)
+        # CVSSScore Pydantic value object
+        inner = getattr(val, "value", None)
+        if inner is not None and isinstance(inner, (int, float)):
+            return float(inner)
     return None
 
 
 def _get_epss(enrichment: Any) -> float | None:
-    """Extract EPSS score from enrichment data."""
+    """Extract EPSS score from enrichment data.
+
+    EPSS is nested: enrichment.epss.score (EPSSScore object).
+    """
+    # Try direct epss_score first (dict case)
     if isinstance(enrichment, dict):
         val = enrichment.get("epss_score")
+        if val is not None and isinstance(val, (int, float)):
+            return float(val)
+    # Try nested: enrichment.epss.score
+    if isinstance(enrichment, dict):
+        epss_obj = enrichment.get("epss")
     else:
-        val = getattr(enrichment, "epss_score", None)
-    if val is not None and isinstance(val, (int, float)):
-        return float(val)
+        epss_obj = getattr(enrichment, "epss", None)
+    if epss_obj is not None:
+        score = getattr(epss_obj, "score", None)
+        if score is not None and isinstance(score, (int, float)):
+            return float(score)
     return None
 
 
 def _get_risk_prob(classification: Any) -> float:
-    """Extract risk probability from a classification."""
+    """Extract risk probability from a classification.
+
+    Handles ClassificationResult (risk_score.risk_probability)
+    and dict representations.
+    """
     if classification is None:
         return 0.0
     if isinstance(classification, dict):
         return float(classification.get("risk_probability", 0.0) or 0.0)
+    # ClassificationResult -> risk_score -> risk_probability
+    risk_score = getattr(classification, "risk_score", None)
+    if risk_score is not None:
+        prob = getattr(risk_score, "risk_probability", None)
+        if prob is not None:
+            return float(prob)
     return float(getattr(classification, "risk_probability", 0.0) or 0.0)
 
 

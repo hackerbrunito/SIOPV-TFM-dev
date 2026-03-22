@@ -137,13 +137,19 @@ def _count_high_epss(enrichments: dict[str, Any]) -> int:
     """Count CVEs with EPSS score above the high-risk threshold."""
     count = 0
     for enrichment in enrichments.values():
-        epss = (
-            enrichment.get("epss_score")
-            if isinstance(enrichment, dict)
-            else getattr(enrichment, "epss_score", None)
-        )
-        if epss is not None and isinstance(epss, (int, float)) and epss > EPSS_HIGH_RISK_THRESHOLD:
-            count += 1
+        # EPSS is nested: enrichment.epss.score (EPSSScore object)
+        if isinstance(enrichment, dict):
+            epss_obj = enrichment.get("epss")
+        else:
+            epss_obj = getattr(enrichment, "epss", None)
+        if epss_obj is not None:
+            score = getattr(epss_obj, "score", None)
+            if (
+                score is not None
+                and isinstance(score, (int, float))
+                and score > EPSS_HIGH_RISK_THRESHOLD
+            ):
+                count += 1
     return count
 
 
@@ -157,9 +163,20 @@ def _average_risk_score(classifications: dict[str, Any]) -> float:
 
 
 def _get_risk_probability(classification: Any) -> float:
-    """Extract risk_probability from a classification (dict or object)."""
+    """Extract risk_probability from a classification.
+
+    Handles ClassificationResult (risk_score.risk_probability)
+    and dict representations.
+    """
     if isinstance(classification, dict):
         return float(classification.get("risk_probability", 0.0) or 0.0)
+    # ClassificationResult → risk_score → risk_probability
+    risk_score = getattr(classification, "risk_score", None)
+    if risk_score is not None:
+        prob = getattr(risk_score, "risk_probability", None)
+        if prob is not None:
+            return float(prob)
+    # Direct attribute fallback
     return float(getattr(classification, "risk_probability", 0.0) or 0.0)
 
 
