@@ -127,19 +127,13 @@ def _render_run_selector(
         if not all_runs:
             return None
 
-        # Build display labels — date first for readability
+        # Build display labels — local time first for readability
         labels: list[str] = []
         for run in all_runs:
-            status = (
-                "RUNNING"
-                if run.is_running
-                else ("PAUSED" if run.is_interrupted else "DONE")
-            )
+            status = "RUNNING" if run.is_running else ("PAUSED" if run.is_interrupted else "DONE")
             vuln_count = run.vulnerability_count
-            time_label = run.created_at[:19] if run.created_at else "unknown"
-            labels.append(
-                f"{time_label}  |  {status}  |  {vuln_count} CVEs"
-            )
+            time_label = _format_local_time(run.created_at)
+            labels.append(f"{time_label}  |  {status}  |  {vuln_count} CVEs")
 
         selected_idx = st.selectbox(
             "Select a pipeline run",
@@ -300,6 +294,34 @@ def _render_timing_tab(
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
+
+def _format_local_time(iso_timestamp: str | None) -> str:
+    """Convert an ISO 8601 UTC timestamp to local server time for display.
+
+    Uses the system's configured timezone automatically via
+    ``datetime.astimezone()`` with no argument.
+
+    Args:
+        iso_timestamp: ISO 8601 string (may be UTC or naive).
+
+    Returns:
+        Formatted local time string, or 'unknown' if parsing fails.
+    """
+    if not iso_timestamp:
+        return "unknown"
+    try:
+        from datetime import UTC, datetime  # noqa: PLC0415
+
+        dt = datetime.fromisoformat(iso_timestamp)
+        # If naive (no timezone), assume UTC
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=UTC)
+        # Convert to local system timezone
+        local_dt = dt.astimezone()
+        return local_dt.strftime("%Y-%m-%d %H:%M:%S")
+    except (ValueError, TypeError):
+        return iso_timestamp[:19] if iso_timestamp else "unknown"
 
 
 def _get_cve_id(vuln: Any) -> str:
