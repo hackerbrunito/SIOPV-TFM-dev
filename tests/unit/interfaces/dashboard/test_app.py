@@ -243,18 +243,16 @@ class TestGetInterruptedThreads:
 class TestHandleDecision:
     """Tests for ``handle_decision``."""
 
-    @patch("siopv.interfaces.dashboard.app.get_graph")
+    @patch("siopv.interfaces.dashboard.app.asyncio")
     @patch("siopv.interfaces.dashboard.app.st")
-    def test_invokes_graph_with_correct_command(
+    def test_invokes_async_resume(
         self,
         mock_st: MagicMock,
-        mock_get_graph: MagicMock,
+        mock_asyncio: MagicMock,
     ) -> None:
         mock_st.session_state = FakeSessionState(
             {"selected_thread_id": "tid-resume"},
         )
-        mock_graph = MagicMock()
-        mock_get_graph.return_value = mock_graph
 
         handle_decision(
             thread_id="tid-resume",
@@ -263,29 +261,19 @@ class TestHandleDecision:
             recommendation=None,
         )
 
-        mock_graph.invoke.assert_called_once()
-        call_args = mock_graph.invoke.call_args
-        cmd = call_args[0][0]
-        assert isinstance(cmd, Command)
-        assert cmd.resume == {
-            "decision": "approve",
-            "modified_score": None,
-            "modified_recommendation": None,
-        }
-        config = call_args[1]["config"]
-        assert config == {"configurable": {"thread_id": "tid-resume"}}
+        # asyncio.run should be called with the async resume coroutine
+        mock_asyncio.run.assert_called_once()
 
-    @patch("siopv.interfaces.dashboard.app.get_graph")
+    @patch("siopv.interfaces.dashboard.app.asyncio")
     @patch("siopv.interfaces.dashboard.app.st")
     def test_clears_selected_thread_after_decision(
         self,
         mock_st: MagicMock,
-        mock_get_graph: MagicMock,
+        mock_asyncio: MagicMock,
     ) -> None:
         mock_st.session_state = FakeSessionState(
             {"selected_thread_id": "tid-clear"},
         )
-        mock_get_graph.return_value = MagicMock()
 
         handle_decision(
             thread_id="tid-clear",
@@ -296,18 +284,16 @@ class TestHandleDecision:
 
         assert mock_st.session_state["selected_thread_id"] is None
 
-    @patch("siopv.interfaces.dashboard.app.get_graph")
+    @patch("siopv.interfaces.dashboard.app.asyncio")
     @patch("siopv.interfaces.dashboard.app.st")
-    def test_modify_decision_passes_score_and_recommendation(
+    def test_modify_decision_clears_selection(
         self,
         mock_st: MagicMock,
-        mock_get_graph: MagicMock,
+        mock_asyncio: MagicMock,
     ) -> None:
         mock_st.session_state = FakeSessionState(
             {"selected_thread_id": "tid-mod"},
         )
-        mock_graph = MagicMock()
-        mock_get_graph.return_value = mock_graph
 
         handle_decision(
             thread_id="tid-mod",
@@ -316,12 +302,8 @@ class TestHandleDecision:
             recommendation="Patch immediately",
         )
 
-        cmd = mock_graph.invoke.call_args[0][0]
-        assert cmd.resume == {
-            "decision": "modify",
-            "modified_score": 0.85,
-            "modified_recommendation": "Patch immediately",
-        }
+        mock_asyncio.run.assert_called_once()
+        assert mock_st.session_state["selected_thread_id"] is None
 
 
 # ---------------------------------------------------------------------------

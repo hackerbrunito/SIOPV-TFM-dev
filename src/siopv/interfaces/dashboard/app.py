@@ -9,6 +9,7 @@ Launch: streamlit run src/siopv/interfaces/dashboard/app.py
 
 from __future__ import annotations
 
+import asyncio
 import sqlite3
 from typing import TYPE_CHECKING, Any
 
@@ -180,8 +181,21 @@ def handle_decision(
         "modified_score": score,
         "modified_recommendation": recommendation,
     }
-    graph = get_graph()
-    graph.invoke(Command(resume=resume_value), config=config)
+    from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver  # noqa: PLC0415
+
+    from siopv.infrastructure.config import get_settings  # noqa: PLC0415
+
+    async def _resume_pipeline() -> None:
+        """Resume the pipeline asynchronously (required for async nodes)."""
+        db_path = get_settings().checkpoint_db_path
+        async with AsyncSqliteSaver.from_conn_string(str(db_path)) as checkpointer:
+            builder = PipelineGraphBuilder()
+            builder.build()
+            compiled = builder.compile(with_checkpointer=False)
+            compiled.checkpointer = checkpointer
+            await compiled.ainvoke(Command(resume=resume_value), config=config)
+
+    asyncio.run(_resume_pipeline())
     st.session_state.selected_thread_id = None
     logger.info("decision_submitted", thread_id=thread_id, decision=decision)
 
