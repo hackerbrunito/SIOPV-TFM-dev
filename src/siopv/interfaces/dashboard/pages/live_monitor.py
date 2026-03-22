@@ -108,7 +108,7 @@ def _render_observer_mode(graph: Any, conn: sqlite3.Connection) -> None:
     flow_placeholder = st.empty()
     detail_placeholder = st.container()
 
-    @st.fragment(run_every=0.5)
+    @st.fragment(run_every=3)
     def poll_active_pipelines() -> None:
         active = get_active_runs(graph, conn)
 
