@@ -55,6 +55,9 @@ DEFAULT_FEATURE_NAMES = [
     "epss_percentile",
     "days_since_publication",
     "has_exploit_ref",
+    "has_public_exploit",
+    "has_metasploit",
+    "num_references",
     "cwe_category",
 ]
 
