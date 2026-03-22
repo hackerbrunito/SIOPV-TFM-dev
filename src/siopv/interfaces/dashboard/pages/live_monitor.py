@@ -6,7 +6,7 @@ Two modes:
 2. **Manual mode** — user uploads/specifies a Trivy report and triggers
    execution directly.
 
-The observer mode uses ``@st.fragment(run_every=2)`` to poll the
+The observer mode uses ``@st.fragment(run_every=0.5)`` to poll the
 checkpoint database for active pipeline threads and display their
 progress in real time.
 """
@@ -103,12 +103,12 @@ def render_live_monitor() -> None:
 def _render_observer_mode(graph: Any, conn: sqlite3.Connection) -> None:
     """Render observer mode: poll checkpoint DB for active pipelines.
 
-    Uses st.fragment(run_every=2) for automatic polling.
+    Uses st.fragment(run_every=0.5) for automatic polling (500ms).
     """
     flow_placeholder = st.empty()
     detail_placeholder = st.container()
 
-    @st.fragment(run_every=2)
+    @st.fragment(run_every=0.5)
     def poll_active_pipelines() -> None:
         active = get_active_runs(graph, conn)
 
@@ -126,7 +126,7 @@ def _render_observer_mode(graph: Any, conn: sqlite3.Connection) -> None:
                     _render_pipeline_flow_diagram(run)
                 st.caption("Last completed pipeline run")
             else:
-                st.info("Waiting for pipeline execution... (polling every 2s)")
+                st.info("Waiting for pipeline execution... (polling every 500ms)")
             return
 
         # Show the most recent active run
