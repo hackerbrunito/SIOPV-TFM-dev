@@ -227,7 +227,11 @@ class FeatureEngineer:
     def _calculate_days_since_publication(self, enrichment: EnrichmentData) -> int:
         """Calculate days since CVE publication."""
         if enrichment.nvd and enrichment.nvd.published_date:
-            delta = datetime.now(UTC) - enrichment.nvd.published_date
+            published = enrichment.nvd.published_date
+            # Ensure timezone-aware comparison — NVD dates may be naive
+            if published.tzinfo is None:
+                published = published.replace(tzinfo=UTC)
+            delta = datetime.now(UTC) - published
             return max(0, delta.days)
 
         # Default to 0 if unknown
