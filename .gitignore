@@ -100,5 +100,9 @@ testing-kit/claude/
 .verify-*/
 coverage.xml
 
+# SQLite WAL mode ephemeral files (regenerate on DB access)
+*.db-shm
+*.db-wal
+
 # Build checkpoints (ephemeral verification markers)
 .build/
