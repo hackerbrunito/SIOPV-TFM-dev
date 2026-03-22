@@ -93,6 +93,14 @@ def discover_pipeline_threads(
     Returns:
         List of thread_id strings, most recent first.
     """
+    # Force a fresh read — cached connections in WAL mode may hold
+    # stale read snapshots. COMMIT closes any implicit transaction
+    # so the next SELECT sees the latest writes from other processes.
+    import contextlib  # noqa: PLC0415
+
+    with contextlib.suppress(Exception):
+        conn.execute("COMMIT")
+
     cursor = conn.execute(
         "SELECT thread_id FROM checkpoints "
         "WHERE checkpoint_ns = '' "
