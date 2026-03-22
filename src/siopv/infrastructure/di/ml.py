@@ -57,7 +57,21 @@ def build_classifier(settings: Settings) -> MLClassifierPort | None:
     return adapter
 
 
+def build_feature_engineer() -> object:
+    """Create a FeatureEngineer adapter instance.
+
+    Returns:
+        FeatureEngineerPort implementation for extracting ML feature vectors.
+    """
+    from siopv.adapters.ml.feature_engineer import FeatureEngineer  # noqa: PLC0415
+
+    engineer = FeatureEngineer()
+    logger.info("feature_engineer_created")
+    return engineer
+
+
 __all__ = [
     "build_classifier",
+    "build_feature_engineer",
     "build_trivy_parser",
 ]

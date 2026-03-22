@@ -18,6 +18,7 @@ from siopv.domain.value_objects.risk_score import RiskScore
 
 if TYPE_CHECKING:
     from siopv.application.orchestration.state import PipelineState
+    from siopv.application.ports.feature_engineering import FeatureEngineerPort
     from siopv.application.ports.llm_analysis import LLMAnalysisPort
     from siopv.application.ports.ml_classifier import MLClassifierPort
     from siopv.domain.value_objects import EnrichmentData
@@ -30,6 +31,7 @@ async def classify_node(
     *,
     classifier: MLClassifierPort | None = None,
     llm_analysis: LLMAnalysisPort | None = None,
+    feature_engineer: FeatureEngineerPort | None = None,
 ) -> dict[str, object]:
     """Execute classification phase as a LangGraph node.
 
@@ -81,6 +83,7 @@ async def classify_node(
                 enrichments=enrichments,  # type: ignore[arg-type]
                 classifier=classifier,
                 llm_analysis=llm_analysis,
+                feature_engineer=feature_engineer,
             )
 
         logger.info(
@@ -111,6 +114,7 @@ async def _run_classification(
     enrichments: dict[str, object],
     classifier: MLClassifierPort,
     llm_analysis: LLMAnalysisPort | None = None,
+    feature_engineer: FeatureEngineerPort | None = None,
 ) -> tuple[dict[str, object], dict[str, object]]:
     """Run classification using ClassifyRiskUseCase.
 
@@ -124,7 +128,7 @@ async def _run_classification(
         Tuple of (classifications dict, llm_confidence dict)
     """
 
-    use_case = ClassifyRiskUseCase(classifier=classifier)
+    use_case = ClassifyRiskUseCase(classifier=classifier, feature_engineer=feature_engineer)
 
     # list[object]/dict[str, object] are typed lists/dicts at runtime
     result = use_case.execute_batch(vulnerabilities, enrichments)  # type: ignore[arg-type]

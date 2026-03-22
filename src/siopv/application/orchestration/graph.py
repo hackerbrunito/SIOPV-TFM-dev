@@ -46,6 +46,7 @@ if TYPE_CHECKING:
         VectorStorePort,
     )
     from siopv.application.ports.dlp import DLPPort
+    from siopv.application.ports.feature_engineering import FeatureEngineerPort
     from siopv.application.ports.jira_client import JiraClientPort
     from siopv.application.ports.llm_analysis import LLMAnalysisPort
     from siopv.application.ports.metrics_exporter import MetricsExporterPort
@@ -76,6 +77,7 @@ class PipelinePorts:
     osint_client: OSINTSearchClientPort | None = None
     vector_store: VectorStorePort | None = None
     classifier: MLClassifierPort | None = None
+    feature_engineer: FeatureEngineerPort | None = None
     llm_analysis: LLMAnalysisPort | None = None
     jira: JiraClientPort | None = None
     pdf: PdfGeneratorPort | None = None
@@ -238,7 +240,12 @@ class PipelineGraphBuilder:
         # Classify (Phase 3 ML)
         self._graph.add_node(
             "classify",
-            _make_async_node(classify_node, classifier=p.classifier, llm_analysis=p.llm_analysis),
+            _make_async_node(
+                classify_node,
+                classifier=p.classifier,
+                llm_analysis=p.llm_analysis,
+                feature_engineer=p.feature_engineer,
+            ),
         )
 
         # Escalate (Phase 4 + Phase 7 HITL)

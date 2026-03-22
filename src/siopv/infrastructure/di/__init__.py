@@ -66,6 +66,7 @@ from siopv.infrastructure.di.enrichment import (
 )
 from siopv.infrastructure.di.ml import (
     build_classifier,
+    build_feature_engineer,
     build_trivy_parser,
 )
 from siopv.infrastructure.di.orchestration import (
@@ -86,6 +87,7 @@ __all__ = [
     "build_classifier",
     "build_epss_client",
     "build_escalation_config",
+    "build_feature_engineer",
     "build_github_client",
     "build_jira_adapter",
     "build_llm_analysis",

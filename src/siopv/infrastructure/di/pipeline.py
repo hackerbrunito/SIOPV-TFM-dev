@@ -23,7 +23,7 @@ from siopv.infrastructure.di.enrichment import (
     build_osint_client,
     build_vector_store,
 )
-from siopv.infrastructure.di.ml import build_classifier, build_trivy_parser
+from siopv.infrastructure.di.ml import build_classifier, build_feature_engineer, build_trivy_parser
 from siopv.infrastructure.di.orchestration import (
     build_escalation_config,
     build_threshold_config,
@@ -76,6 +76,7 @@ def build_pipeline_ports(
         osint_client=build_osint_client(settings),
         vector_store=build_vector_store(settings),
         classifier=build_classifier(settings),
+        feature_engineer=build_feature_engineer(),
         llm_analysis=build_llm_analysis(settings),
         jira=jira_port,
         pdf=pdf_port,
