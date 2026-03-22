@@ -101,6 +101,12 @@ def _render_sidebar() -> dict[str, Any]:
         help="Project identifier for authorization context.",
     )
 
+    system_execution = st.sidebar.checkbox(
+        "System Execution (bypass authorization)",
+        value=True,
+        help="Skip OpenFGA authorization check. Use when OpenFGA server is not running.",
+    )
+
     batch_size = st.sidebar.number_input(
         "Batch Size",
         min_value=1,
@@ -115,6 +121,7 @@ def _render_sidebar() -> dict[str, Any]:
         "uploaded_file": uploaded_file,
         "user_id": user_id.strip() or settings.default_user_id,
         "project_id": project_id.strip() or settings.default_project_id,
+        "system_execution": system_execution,
         "batch_size": int(batch_size),
     }
 
@@ -207,6 +214,7 @@ def _execute_pipeline(config: dict[str, Any], report_path: Path) -> None:
             ports=ports,
             user_id=config["user_id"],
             project_id=config["project_id"],
+            system_execution=config["system_execution"],
             stream_timeout_seconds=settings.pipeline_monitor_stream_timeout_seconds,
         )
 
