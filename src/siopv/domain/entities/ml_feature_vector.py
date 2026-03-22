@@ -1,7 +1,9 @@
 """ML Feature Vector entity for risk classification.
 
-Represents the 14-feature vector used by the XGBoost classifier
-as specified in Phase 3 of the SIOPV pipeline.
+Represents the 17-feature vector used by the XGBoost classifier.
+Features: 9 CVSS metrics, 2 EPSS scores, 1 temporal, 3 binary
+indicators (exploit ref, ExploitDB, Metasploit), 1 reference count,
+1 CWE category (target encoded).
 """
 
 from __future__ import annotations
@@ -16,12 +18,13 @@ from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validat
 class MLFeatureVector(BaseModel):
     """Domain entity representing the feature vector for ML classification.
 
-    Contains the 14 features specified in the technical proposal:
+    Contains the 17 features used by the trained XGBoost model:
     - CVSS metrics (9 features)
     - EPSS data (2 features)
     - Temporal data (1 feature)
-    - Binary indicator (1 feature)
-    - Categorical (1 feature, target encoded)
+    - Binary indicators (3 features: exploit ref, ExploitDB, Metasploit)
+    - Reference count (1 feature)
+    - Categorical (1 feature, target encoded CWE)
     """
 
     model_config = ConfigDict(frozen=True)
@@ -83,10 +86,24 @@ class MLFeatureVector(BaseModel):
         Field(ge=0, description="Days since CVE publication"),
     ]
 
-    # === Binary Indicator (1 feature) ===
+    # === Binary Indicators (3 features) ===
     has_exploit_ref: Annotated[
         int,
         Field(ge=0, le=1, description="1 if exploit references exist, 0 otherwise"),
+    ]
+    has_public_exploit: Annotated[
+        int,
+        Field(ge=0, le=1, description="1 if ExploitDB reference exists, 0 otherwise"),
+    ]
+    has_metasploit: Annotated[
+        int,
+        Field(ge=0, le=1, description="1 if Metasploit module exists, 0 otherwise"),
+    ]
+
+    # === Reference count (1 feature) ===
+    num_references: Annotated[
+        int,
+        Field(ge=0, description="Number of advisory/reference URLs"),
     ]
 
     # === Categorical (1 feature, target encoded) ===
@@ -128,6 +145,9 @@ class MLFeatureVector(BaseModel):
             "epss_percentile",
             "days_since_publication",
             "has_exploit_ref",
+            "has_public_exploit",
+            "has_metasploit",
+            "num_references",
             "cwe_category",
         ]
 
@@ -135,7 +155,7 @@ class MLFeatureVector(BaseModel):
         """Convert to numpy array for model input.
 
         Returns:
-            1D numpy array with 14 features in correct order
+            1D numpy array with 17 features in correct order
         """
         return np.array(
             [
@@ -152,6 +172,9 @@ class MLFeatureVector(BaseModel):
                 self.epss_percentile,
                 self.days_since_publication,
                 self.has_exploit_ref,
+                self.has_public_exploit,
+                self.has_metasploit,
+                self.num_references,
                 self.cwe_category,
             ],
             dtype=np.float32,
@@ -176,6 +199,9 @@ class MLFeatureVector(BaseModel):
         epss_percentile: float = 0.0,
         days_since_publication: int = 0,
         has_exploit_ref: bool = False,
+        has_public_exploit: bool = False,
+        has_metasploit: bool = False,
+        num_references: int = 0,
         cwe_category: float = 0.0,
     ) -> MLFeatureVector:
         """Create MLFeatureVector from enrichment data.
@@ -211,6 +237,9 @@ class MLFeatureVector(BaseModel):
             epss_percentile=epss_percentile,
             days_since_publication=days_since_publication,
             has_exploit_ref=1 if has_exploit_ref else 0,
+            has_public_exploit=1 if has_public_exploit else 0,
+            has_metasploit=1 if has_metasploit else 0,
+            num_references=num_references,
             cwe_category=cwe_category,
         )
 

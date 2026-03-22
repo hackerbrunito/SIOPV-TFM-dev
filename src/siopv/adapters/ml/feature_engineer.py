@@ -118,6 +118,12 @@ class FeatureEngineer:
         # Check for exploit references
         has_exploit_ref = self._check_exploit_references(enrichment)
 
+        # Check for ExploitDB and Metasploit presence
+        has_public_exploit, has_metasploit = self._check_exploit_sources(enrichment)
+
+        # Count references
+        num_references = self._count_references(enrichment)
+
         # Encode CWE category
         cwe_category = self._encode_cwe(enrichment)
 
@@ -136,6 +142,9 @@ class FeatureEngineer:
             epss_percentile=epss_percentile,
             days_since_publication=days_since_publication,
             has_exploit_ref=1 if has_exploit_ref else 0,
+            has_public_exploit=1 if has_public_exploit else 0,
+            has_metasploit=1 if has_metasploit else 0,
+            num_references=num_references,
             cwe_category=cwe_category,
         )
 
@@ -251,6 +260,43 @@ class FeatureEngineer:
                 return True
 
         return False
+
+    def _check_exploit_sources(self, enrichment: EnrichmentData) -> tuple[bool, bool]:
+        """Check for ExploitDB and Metasploit references in enrichment data.
+
+        Returns:
+            Tuple of (has_public_exploit, has_metasploit)
+        """
+        has_exploitdb = False
+        has_metasploit = False
+
+        if enrichment.nvd and enrichment.nvd.references:
+            for ref in enrichment.nvd.references:
+                ref_lower = ref.lower()
+                if "exploit-db.com" in ref_lower or "exploitdb" in ref_lower:
+                    has_exploitdb = True
+                if "metasploit" in ref_lower or "rapid7.com" in ref_lower:
+                    has_metasploit = True
+
+        # Also check OSINT results
+        for osint in enrichment.osint_results:
+            content_lower = osint.content.lower()
+            if "exploit-db" in content_lower or "exploitdb" in content_lower:
+                has_exploitdb = True
+            if "metasploit" in content_lower:
+                has_metasploit = True
+
+        return has_exploitdb, has_metasploit
+
+    def _count_references(self, enrichment: EnrichmentData) -> int:
+        """Count the number of advisory/reference URLs."""
+        count = 0
+        if enrichment.nvd and enrichment.nvd.references:
+            count += len(enrichment.nvd.references)
+        if enrichment.github_advisory:
+            count += 1
+        count += len(enrichment.osint_results)
+        return count
 
     def _encode_cwe(self, enrichment: EnrichmentData) -> float:
         """Target encode CWE category.
