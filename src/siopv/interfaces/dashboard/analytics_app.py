@@ -120,6 +120,16 @@ def main() -> None:
         initial_sidebar_state="expanded",
     )
 
+    # Widen sidebar for better readability of pipeline run labels
+    st.markdown(
+        """
+        <style>
+        [data-testid="stSidebar"] { min-width: 380px; max-width: 480px; }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
     _initialize_shared_state()
 
     # Multi-page navigation (Streamlit 1.36+ API)

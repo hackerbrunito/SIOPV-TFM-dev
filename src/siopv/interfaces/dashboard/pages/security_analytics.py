@@ -127,15 +127,19 @@ def _render_run_selector(
         if not all_runs:
             return None
 
-        # Build display labels
+        # Build display labels — date first for readability
         labels: list[str] = []
         for run in all_runs:
             status = (
-                "RUNNING" if run.is_running else ("INTERRUPTED" if run.is_interrupted else "DONE")
+                "RUNNING"
+                if run.is_running
+                else ("PAUSED" if run.is_interrupted else "DONE")
             )
-            vuln_label = f"{run.vulnerability_count} CVEs" if run.vulnerability_count else "pending"
+            vuln_count = run.vulnerability_count
             time_label = run.created_at[:19] if run.created_at else "unknown"
-            labels.append(f"[{status}] {vuln_label} — {time_label}")
+            labels.append(
+                f"{time_label}  |  {status}  |  {vuln_count} CVEs"
+            )
 
         selected_idx = st.selectbox(
             "Select a pipeline run",
