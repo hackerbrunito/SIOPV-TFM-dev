@@ -426,6 +426,14 @@ def analytics() -> None:
 
 
 @app.command()
+def webhook_server() -> None:
+    """Start the webhook server for receiving Trivy reports from CI/CD."""
+    from siopv.interfaces.webhook_server import main as serve  # noqa: PLC0415
+
+    serve()
+
+
+@app.command()
 def version() -> None:
     """Show SIOPV version information."""
     typer.echo("SIOPV v0.1.0")
