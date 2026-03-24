@@ -76,7 +76,7 @@ Tickets Jira       Informe PDF         Métricas CSV/JSON
          ▼
     Paso 6: ESCALAR (condicional)
     └─ Si la discrepancia ML vs LLM supera el umbral →
-       Revisión Human-in-the-Loop (dashboard Streamlit)
+       Marcar como NEEDS-HUMAN-REVIEW (reportado en tickets Jira y PDF)
          │
          ▼
     Paso 7: SALIDA
@@ -102,7 +102,7 @@ INICIO → autorizar → ingestar → dlp → enriquecer → clasificar → [esc
 | 3 | **dlp** | Detección y anonimización de PII basada en Presidio |
 | 4 | **enriquecer** | Patrón CRAG — consulta NVD, EPSS, GitHub Advisories, con fallback OSINT |
 | 5 | **clasificar** | Clasificación de riesgo ML (XGBoost) con evaluación de confianza LLM |
-| 6 | **escalar** | Revisión human-in-the-loop para clasificaciones de alta incertidumbre |
+| 6 | **escalar** | Marca clasificaciones de alta incertidumbre como NEEDS-HUMAN-REVIEW en tickets Jira |
 | 7 | **salida** | Genera tickets Jira, informes PDF de auditoría, exportaciones JSON/CSV |
 
 ### Capas Hexagonales

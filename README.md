@@ -77,7 +77,7 @@ Jira Tickets       PDF Report          CSV/JSON Metrics
          ▼
     Step 6: ESCALATE (conditional)
     └─ If ML vs LLM discrepancy exceeds threshold →
-       Human-in-the-Loop review (Streamlit dashboard)
+       Flag as NEEDS-HUMAN-REVIEW (reported in Jira tickets and PDF)
          │
          ▼
     Step 7: OUTPUT
@@ -103,7 +103,7 @@ START → authorize → ingest → dlp → enrich → classify → [escalate] �
 | 3 | **dlp** | Presidio-based PII detection and anonymization of sensitive data |
 | 4 | **enrich** | CRAG pattern — queries NVD, EPSS, GitHub Advisories, with OSINT fallback |
 | 5 | **classify** | ML risk classification (XGBoost) with LLM confidence evaluation |
-| 6 | **escalate** | Human-in-the-loop review for high-uncertainty classifications |
+| 6 | **escalate** | Flags high-uncertainty classifications as NEEDS-HUMAN-REVIEW in Jira tickets |
 | 7 | **output** | Generates Jira tickets, PDF audit reports, JSON/CSV metrics exports |
 
 ### Hexagonal Layers
